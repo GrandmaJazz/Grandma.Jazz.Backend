@@ -1,4 +1,3 @@
-// อัปเดตไฟล์ backend/src/app.js เพื่อเพิ่ม route สำหรับ reviews
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -23,7 +22,7 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
-const reviewRoutes = require('./routes/reviewRoutes'); // เพิ่มบรรทัดนี้
+const reviewRoutes = require('./routes/reviewRoutes');
 
 // สร้างแอปพลิเคชัน Express
 const app = express();
@@ -32,9 +31,23 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// กำหนดค่า CORS
+// กำหนดค่า CORS ที่แก้ไขแล้ว
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'https://grandma-jazz-murex.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173'  // เพิ่ม Vite default port (ถ้าใช้)
+];
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'https://grandma-jazz-murex.vercel.app',
+  origin: function(origin, callback) {
+    // อนุญาตให้เรียกจาก REST client หรือ Postman (ไม่มี origin)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`Origin blocked: ${origin}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
   credentials: true
 }));
 
@@ -46,7 +59,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/reviews', reviewRoutes); // เพิ่มบรรทัดนี้
+app.use('/api/reviews', reviewRoutes);
 
 // Webhook route สำหรับ Stripe (ใช้ raw body parser)
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -65,6 +78,15 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
 // Test route
 app.get('/', (req, res) => {
   res.send('API is running...');
+});
+
+// CORS diagnostic route
+app.get('/api/cors-test', (req, res) => {
+  res.json({
+    message: 'CORS is working properly!',
+    origin: req.headers.origin || 'No origin header',
+    allowedOrigins
+  });
 });
 
 // Middleware สำหรับจัดการข้อผิดพลาด
