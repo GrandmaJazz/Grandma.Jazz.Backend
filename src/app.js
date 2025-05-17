@@ -34,7 +34,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // กำหนดค่า CORS
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: process.env.CLIENT_URL || 'https://grandma-jazz-murex.vercel.app',
   credentials: true
 }));
 
