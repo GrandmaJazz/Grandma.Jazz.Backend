@@ -1,8 +1,7 @@
 const Card = require('../models/Card');
 const Music = require('../models/Music');
 const asyncHandler = require('express-async-handler');
-const fs = require('fs');
-const path = require('path');
+const { deleteFile } = require('../utils/gridFsHelper');
 const mm = require('music-metadata');
 
 // @desc    ดึงข้อมูลการ์ดทั้งหมด
@@ -51,14 +50,15 @@ const getCardById = asyncHandler(async (req, res) => {
 // @access  Private/Admin
 const createCard = asyncHandler(async (req, res) => {
   // ตรวจสอบว่ามีการอัปโหลดรูปภาพหรือไม่
-  if (!req.file && (!req.files || !req.files.image)) {
+  if (!req.files || !req.files.image || req.files.image.length === 0) {
     res.status(400);
     throw new Error('Please upload a card image');
   }
   
-  // หาไฟล์รูปภาพ - อาจมาจาก req.file หรือ req.files.image
-  const imageFile = req.file || req.files.image[0];
-  const imagePath = `/uploads/cards/${imageFile.filename}`;
+  // หาไฟล์รูปภาพ
+  const imageFile = req.files.image[0];
+  // สร้าง URL สำหรับเข้าถึงไฟล์จาก GridFS
+  const imagePath = `/api/files/${imageFile.bucketName}/${imageFile.filename}`;
   
   // กำหนดชื่อที่มีความหมายมากขึ้น เช่น ใช้วันที่สร้าง
   const defaultTitle = `Music Card ${new Date().toLocaleDateString('en-US', {
@@ -77,24 +77,24 @@ const createCard = asyncHandler(async (req, res) => {
   });
   
   // ถ้ามีการอัปโหลดไฟล์เพลง (req.files.music)
-  if (req.files && req.files.music) {
-    // อาจจะเป็นไฟล์เดียวหรือหลายไฟล์
-    const musicFiles = Array.isArray(req.files.music) ? req.files.music : [req.files.music];
+  if (req.files && req.files.music && req.files.music.length > 0) {
+    const musicFiles = req.files.music;
     
     for (const file of musicFiles) {
-      const filePath = `/uploads/music/${file.filename}`;
+      const filePath = `/api/files/${file.bucketName}/${file.filename}`;
       
       // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
       const fileName = file.originalname.split('.').slice(0, -1).join('.');
       
-      // อ่านข้อมูล metadata จากไฟล์เพลง
+      // อ่านข้อมูล duration ถ้ามีใน metadata
       let duration = 0;
-      try {
-        const fullPath = path.join(__dirname, '..', '..', filePath);
-        const metadata = await mm.parseFile(fullPath);
-        duration = metadata.format.duration || 0;
-      } catch (error) {
-        console.error('Error parsing music metadata:', error);
+      if (file.metadata && file.metadata.duration) {
+        duration = file.metadata.duration;
+      } else {
+        // ถ้าไม่มี duration ใน metadata ให้ใช้ค่าเริ่มต้น
+        // หมายเหตุ: การอ่าน duration จาก file โดยตรงอาจทำได้ยากบน GridFS
+        // อาจต้องใช้วิธีอื่นในการอ่าน duration เช่น client-side หรือใช้ cloud function
+        duration = 0;
       }
       
       // สร้างเพลง
@@ -130,7 +130,6 @@ const updateCard = asyncHandler(async (req, res) => {
   }
   
   // ถ้าไม่มีการส่ง title หรือ description มา ให้ใช้ค่าเดิม
-  // ไม่ใช่รับค่าจาก req.body แล้วเปลี่ยนเป็นค่าว่าง
   const updateData = {
     isActive: req.body.isActive !== undefined ? (req.body.isActive === 'false' ? false : true) : card.isActive,
     updatedAt: Date.now()
@@ -152,19 +151,21 @@ const updateCard = asyncHandler(async (req, res) => {
   }
   
   // ถ้ามีการอัปโหลดรูปภาพใหม่
-  if (req.file || (req.files && req.files.image)) {
-    // หาไฟล์รูปภาพ - อาจมาจาก req.file หรือ req.files.image
-    const imageFile = req.file || req.files.image[0];
+  if (req.files && req.files.image && req.files.image.length > 0) {
+    const imageFile = req.files.image[0];
     
-    // ลบรูปภาพเก่า (ถ้ามี)
+    // ลบรูปภาพเก่าจาก GridFS (ถ้ามี)
     if (card.imagePath) {
-      const oldImagePath = path.join(__dirname, '..', '..', card.imagePath);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+      // แยกชื่อไฟล์จาก URL
+      const oldFilename = card.imagePath.split('/').pop();
+      const bucketName = 'cards';
+      
+      // ลบไฟล์เก่า
+      await deleteFile(oldFilename, bucketName);
     }
     
-    updateData.imagePath = `/uploads/cards/${imageFile.filename}`;
+    // อัพเดตพาธรูปภาพ
+    updateData.imagePath = `/api/files/${imageFile.bucketName}/${imageFile.filename}`;
   }
   
   card = await Card.findByIdAndUpdate(req.params.id, updateData, {
@@ -173,24 +174,19 @@ const updateCard = asyncHandler(async (req, res) => {
   }).populate('music');
   
   // ถ้ามีการอัปโหลดไฟล์เพลง (req.files.music)
-  if (req.files && req.files.music) {
-    // อาจจะเป็นไฟล์เดียวหรือหลายไฟล์
-    const musicFiles = Array.isArray(req.files.music) ? req.files.music : [req.files.music];
+  if (req.files && req.files.music && req.files.music.length > 0) {
+    const musicFiles = req.files.music;
     
     for (const file of musicFiles) {
-      const filePath = `/uploads/music/${file.filename}`;
+      const filePath = `/api/files/${file.bucketName}/${file.filename}`;
       
       // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
       const fileName = file.originalname.split('.').slice(0, -1).join('.');
       
-      // อ่านข้อมูล metadata จากไฟล์เพลง
+      // อ่านข้อมูล duration ถ้ามีใน metadata
       let duration = 0;
-      try {
-        const fullPath = path.join(__dirname, '..', '..', filePath);
-        const metadata = await mm.parseFile(fullPath);
-        duration = metadata.format.duration || 0;
-      } catch (error) {
-        console.error('Error parsing music metadata:', error);
+      if (file.metadata && file.metadata.duration) {
+        duration = file.metadata.duration;
       }
       
       // สร้างเพลง
@@ -228,13 +224,15 @@ const deleteCard = asyncHandler(async (req, res) => {
     throw new Error('Card not found');
   }
   
-  // ลบรูปภาพ
+  // ลบรูปภาพจาก GridFS
   if (card.imagePath) {
     try {
-      const imagePath = path.join(__dirname, '..', '..', card.imagePath);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+      // แยกชื่อไฟล์จาก URL
+      const filename = card.imagePath.split('/').pop();
+      const bucketName = 'cards';
+      
+      // ลบไฟล์
+      await deleteFile(filename, bucketName);
     } catch (error) {
       console.error('Error deleting image file:', error);
       // ยังคงดำเนินการต่อไปแม้ลบไฟล์ไม่สำเร็จ
@@ -252,7 +250,7 @@ const deleteCard = asyncHandler(async (req, res) => {
     // ยังคงดำเนินการต่อไปแม้อัพเดตความสัมพันธ์ไม่สำเร็จ
   }
   
-  // แก้ไขจาก card.remove() เป็น findByIdAndDelete
+  // ลบการ์ด
   await Card.findByIdAndDelete(req.params.id);
   
   res.status(200).json({
