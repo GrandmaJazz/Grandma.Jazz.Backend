@@ -3,20 +3,17 @@ const mongoose = require('mongoose');
 const MusicSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: [true, 'กรุณาระบุชื่อเพลง'],
+    required: [true, 'Please provide music title'],
     trim: true
   },
-  artist: {
-    type: String,
-    trim: true
-  },
+  // ลบฟิลด์ artist ออก หรือคงไว้แต่ไม่บังคับให้กรอก
   filePath: {
     type: String,
-    required: [true, 'กรุณาอัปโหลดไฟล์เพลง']
+    required: [true, 'Please upload music file']
   },
   duration: {
     type: Number,
-    default: 0 // ความยาวของเพลงในวินาที
+    default: 0
   },
   cards: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -36,7 +33,6 @@ const MusicSchema = new mongoose.Schema({
   }
 });
 
-// อัพเดทเวลาก่อนบันทึก
 MusicSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   next();

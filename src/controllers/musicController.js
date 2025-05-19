@@ -29,7 +29,7 @@ const getMusicById = asyncHandler(async (req, res) => {
   
   if (!music) {
     res.status(404);
-    throw new Error('ไม่พบข้อมูลเพลง');
+    throw new Error('Music not found');
   }
   
   res.status(200).json({
@@ -45,11 +45,14 @@ const createMusic = asyncHandler(async (req, res) => {
   // ตรวจสอบว่ามีการอัปโหลดไฟล์เพลงหรือไม่
   if (!req.file) {
     res.status(400);
-    throw new Error('กรุณาอัปโหลดไฟล์เพลง');
+    throw new Error('Please upload a music file');
   }
   
   const filePath = `/uploads/music/${req.file.filename}`;
   const fullPath = path.join(__dirname, '..', '..', filePath);
+  
+  // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
+  const fileName = req.file.originalname.split('.').slice(0, -1).join('.');
   
   // อ่านข้อมูล metadata จากไฟล์เพลง
   let duration = 0;
@@ -61,8 +64,7 @@ const createMusic = asyncHandler(async (req, res) => {
   }
   
   const music = await Music.create({
-    title: req.body.title || 'Untitled',
-    artist: req.body.artist || 'Unknown',
+    title: fileName, // ใช้ชื่อไฟล์แทนชื่อเพลง
     filePath,
     duration
   });
@@ -81,15 +83,18 @@ const updateMusic = asyncHandler(async (req, res) => {
   
   if (!music) {
     res.status(404);
-    throw new Error('ไม่พบข้อมูลเพลง');
+    throw new Error('Music not found');
   }
   
   const updateData = {
-    title: req.body.title || music.title,
-    artist: req.body.artist || music.artist,
     isActive: req.body.isActive !== undefined ? req.body.isActive : music.isActive,
     updatedAt: Date.now()
   };
+  
+  // ถ้ามีชื่อเพลงใหม่ (แต่ส่วนใหญ่เราจะใช้ชื่อไฟล์)
+  if (req.body.title) {
+    updateData.title = req.body.title;
+  }
   
   // ถ้ามีการอัปโหลดไฟล์เพลงใหม่
   if (req.file) {
@@ -103,6 +108,11 @@ const updateMusic = asyncHandler(async (req, res) => {
     
     const filePath = `/uploads/music/${req.file.filename}`;
     updateData.filePath = filePath;
+    
+    // ถ้าไม่มีการระบุชื่อเพลงใหม่ ใช้ชื่อไฟล์
+    if (!req.body.title) {
+      updateData.title = req.file.originalname.split('.').slice(0, -1).join('.');
+    }
     
     // อ่านข้อมูล metadata จากไฟล์เพลงใหม่
     const fullPath = path.join(__dirname, '..', '..', filePath);
@@ -133,7 +143,7 @@ const deleteMusic = asyncHandler(async (req, res) => {
   
   if (!music) {
     res.status(404);
-    throw new Error('ไม่พบข้อมูลเพลง');
+    throw new Error('Music not found');
   }
   
   // ลบไฟล์เพลง
@@ -144,17 +154,98 @@ const deleteMusic = asyncHandler(async (req, res) => {
     }
   }
   
-  // อัพเดต Card ที่เกี่ยวข้อง
+  // อัพเดต Card ที่เกี่ยวข้อง - ลบเพลงออกจากการอ้างอิงในการ์ด
   await Card.updateMany(
     { music: music._id },
     { $pull: { music: music._id } }
   );
   
+  // ลบเพลงจากฐานข้อมูล
   await music.remove();
   
   res.status(200).json({
     success: true,
-    message: 'ลบเพลงเรียบร้อยแล้ว'
+    message: 'Music deleted successfully'
+  });
+});
+
+// @desc    เพิ่มเพลงเข้าการ์ด
+// @route   POST /api/music/:id/cards
+// @access  Private/Admin
+const addMusicToCard = asyncHandler(async (req, res) => {
+  const { cardId } = req.body;
+  
+  if (!cardId) {
+    res.status(400);
+    throw new Error('Please provide a card ID');
+  }
+  
+  // ตรวจสอบว่ามีเพลงนี้หรือไม่
+  const music = await Music.findById(req.params.id);
+  if (!music) {
+    res.status(404);
+    throw new Error('Music not found');
+  }
+  
+  // ตรวจสอบว่ามีการ์ดนี้หรือไม่
+  const card = await Card.findById(cardId);
+  if (!card) {
+    res.status(404);
+    throw new Error('Card not found');
+  }
+  
+  // ตรวจสอบว่าการ์ดนี้มีเพลงนี้อยู่แล้วหรือไม่
+  if (card.music.includes(music._id)) {
+    res.status(400);
+    throw new Error('This music is already in the card');
+  }
+  
+  // เพิ่มการ์ดเข้าเพลง
+  music.cards.push(cardId);
+  await music.save();
+  
+  // เพิ่มเพลงเข้าการ์ด
+  card.music.push(music._id);
+  await card.save();
+  
+  res.status(200).json({
+    success: true,
+    music: await Music.findById(req.params.id).populate('cards')
+  });
+});
+
+// @desc    ลบเพลงออกจากการ์ด
+// @route   DELETE /api/music/:id/cards/:cardId
+// @access  Private/Admin
+const removeMusicFromCard = asyncHandler(async (req, res) => {
+  const musicId = req.params.id;
+  const cardId = req.params.cardId;
+  
+  // ตรวจสอบว่ามีเพลงนี้หรือไม่
+  const music = await Music.findById(musicId);
+  if (!music) {
+    res.status(404);
+    throw new Error('Music not found');
+  }
+  
+  // ตรวจสอบว่ามีการ์ดนี้หรือไม่
+  const card = await Card.findById(cardId);
+  if (!card) {
+    res.status(404);
+    throw new Error('Card not found');
+  }
+  
+  // ลบการ์ดออกจากเพลง
+  music.cards = music.cards.filter(id => id.toString() !== cardId);
+  await music.save();
+  
+  // ลบเพลงออกจากการ์ด
+  card.music = card.music.filter(id => id.toString() !== musicId);
+  await card.save();
+  
+  res.status(200).json({
+    success: true,
+    music: await Music.findById(musicId).populate('cards')
   });
 });
 
@@ -163,5 +254,7 @@ module.exports = {
   getMusicById,
   createMusic,
   updateMusic,
-  deleteMusic
+  deleteMusic,
+  addMusicToCard,
+  removeMusicFromCard
 };
