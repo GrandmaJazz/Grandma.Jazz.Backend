@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 const CardSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: [true, 'กรุณาระบุชื่อการ์ด'],
+    // ลบ required: [true, 'กรุณาระบุชื่อการ์ด'] ออก หรือเปลี่ยนเป็น required: false
+    default: 'Music Card',
     trim: true
   },
   description: {
@@ -12,11 +13,11 @@ const CardSchema = new mongoose.Schema({
   },
   imagePath: {
     type: String,
-    required: [true, 'กรุณาอัปโหลดรูปภาพการ์ด']
+    required: [true, 'Please upload card image']
   },
   order: {
     type: Number,
-    default: 0 // ใช้สำหรับจัดลำดับการแสดงผลการ์ด
+    default: 0
   },
   isActive: {
     type: Boolean,

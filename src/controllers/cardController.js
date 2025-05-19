@@ -60,9 +60,16 @@ const createCard = asyncHandler(async (req, res) => {
   const imageFile = req.file || req.files.image[0];
   const imagePath = `/uploads/cards/${imageFile.filename}`;
   
+  // กำหนดชื่อที่มีความหมายมากขึ้น เช่น ใช้วันที่สร้าง
+  const defaultTitle = `Music Card ${new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })}`;
+  
   // สร้างการ์ด
   const card = await Card.create({
-    title: req.body.title || 'Untitled Card',
+    title: req.body.title || defaultTitle,
     description: req.body.description || '',
     imagePath,
     order: req.body.order || 0,
@@ -122,13 +129,27 @@ const updateCard = asyncHandler(async (req, res) => {
     throw new Error('Card not found');
   }
   
+  // ถ้าไม่มีการส่ง title หรือ description มา ให้ใช้ค่าเดิม
+  // ไม่ใช่รับค่าจาก req.body แล้วเปลี่ยนเป็นค่าว่าง
   const updateData = {
-    title: req.body.title || card.title,
-    description: req.body.description || card.description,
-    order: req.body.order !== undefined ? req.body.order : card.order,
     isActive: req.body.isActive !== undefined ? (req.body.isActive === 'false' ? false : true) : card.isActive,
     updatedAt: Date.now()
   };
+  
+  // อัพเดต title เฉพาะเมื่อมีการส่งมา
+  if (req.body.title !== undefined) {
+    updateData.title = req.body.title;
+  }
+  
+  // อัพเดต description เฉพาะเมื่อมีการส่งมา
+  if (req.body.description !== undefined) {
+    updateData.description = req.body.description;
+  }
+  
+  // อัพเดต order เฉพาะเมื่อมีการส่งมา
+  if (req.body.order !== undefined) {
+    updateData.order = req.body.order;
+  }
   
   // ถ้ามีการอัปโหลดรูปภาพใหม่
   if (req.file || (req.files && req.files.image)) {
