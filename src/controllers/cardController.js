@@ -230,19 +230,30 @@ const deleteCard = asyncHandler(async (req, res) => {
   
   // ลบรูปภาพ
   if (card.imagePath) {
-    const imagePath = path.join(__dirname, '..', '..', card.imagePath);
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
+    try {
+      const imagePath = path.join(__dirname, '..', '..', card.imagePath);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    } catch (error) {
+      console.error('Error deleting image file:', error);
+      // ยังคงดำเนินการต่อไปแม้ลบไฟล์ไม่สำเร็จ
     }
   }
   
   // อัพเดต Music ที่เกี่ยวข้อง
-  await Music.updateMany(
-    { cards: card._id },
-    { $pull: { cards: card._id } }
-  );
+  try {
+    await Music.updateMany(
+      { cards: card._id },
+      { $pull: { cards: card._id } }
+    );
+  } catch (error) {
+    console.error('Error updating music references:', error);
+    // ยังคงดำเนินการต่อไปแม้อัพเดตความสัมพันธ์ไม่สำเร็จ
+  }
   
-  await card.remove();
+  // แก้ไขจาก card.remove() เป็น findByIdAndDelete
+  await Card.findByIdAndDelete(req.params.id);
   
   res.status(200).json({
     success: true,
