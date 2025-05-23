@@ -1,4 +1,3 @@
-//backend/src/controllers/blogController.js
 const Blog = require('../models/Blog');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
@@ -24,12 +23,13 @@ const getBlogs = asyncHandler(async (req, res) => {
     query.tags = { $in: tagArray };
   }
   
+  // ดึงข้อมูลบล็อกพร้อม content เพื่อแสดงใน modal
   const blogs = await Blog.find(query)
     .populate('author', 'name email')
     .sort({ publishedAt: -1 })
     .limit(limit * 1)
-    .skip((page - 1) * limit)
-    .select('-content'); // ไม่ส่ง content เต็มใน list
+    .skip((page - 1) * limit);
+    // ลบ .select('-content') ออกแล้ว เพื่อให้ส่ง content มาด้วย
   
   const total = await Blog.countDocuments(query);
   
@@ -44,7 +44,7 @@ const getBlogs = asyncHandler(async (req, res) => {
 });
 
 // @desc    ดึงบล็อกทั้งหมด (สำหรับ admin)
-// @route   GET /api/blogs/admin
+// @route   GET /api/blogs/admin/all
 // @access  Private/Admin
 const getAllBlogsAdmin = asyncHandler(async (req, res) => {
   const { page = 1, limit = 12, search, status } = req.query;
@@ -183,18 +183,8 @@ const updateBlog = asyncHandler(async (req, res) => {
     });
   }
   
-  // รวมรูปภาพเก่าและใหม่ (ถ้าไม่ได้อัปโหลดใหม่)
-  const images = newImages.length > 0 ? newImages : blog.images;
-  
-  // ลบรูปภาพเก่า (ถ้ามีการอัปโหลดใหม่)
-  if (newImages.length > 0) {
-    blog.images.forEach(image => {
-      const imagePath = path.join(__dirname, '..', '..', image.path);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    });
-  }
+  // ถ้ามีการอัปโหลดรูปใหม่ ให้ใช้รูปใหม่ ไม่งั้นใช้รูปเดิม
+  const images = newImages.length > 0 ? [...blog.images, ...newImages] : blog.images;
   
   const updateData = {
     title: title || blog.title,
@@ -289,7 +279,7 @@ const deleteImageFromBlog = asyncHandler(async (req, res) => {
 });
 
 // @desc    ดึงสถิติบล็อก
-// @route   GET /api/blogs/stats
+// @route   GET /api/blogs/admin/stats
 // @access  Private/Admin
 const getBlogStats = asyncHandler(async (req, res) => {
   const totalBlogs = await Blog.countDocuments();
