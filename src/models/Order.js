@@ -5,8 +5,13 @@ const { ORDER_STATUS } = require('../config/constants');
 const orderItemSchema = mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
-    required: true
+    refPath: 'productType', // 🆕 ใช้ refPath แทน ref
+    required: false // 🆕 ไม่ required สำหรับ ticket
+  },
+  productType: {
+    type: String,
+    enum: ['Product', 'Event'], // 🆕 เพิ่ม Event
+    default: 'Product'
   },
   name: {
     type: String,
@@ -24,6 +29,25 @@ const orderItemSchema = mongoose.Schema({
   image: {
     type: String,
     required: true
+  },
+  // 🆕 เพิ่มฟิลด์สำหรับ ticket
+  ticketReference: {
+    ticketId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ticket'
+    },
+    eventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Event'
+    },
+    attendees: [{
+      firstName: String,
+      lastName: String
+    }],
+    isTicketOrder: {
+      type: Boolean,
+      default: false
+    }
   }
 });
 
@@ -63,7 +87,6 @@ const orderSchema = mongoose.Schema(
     paidAt: {
       type: Date
     },
-    // เพิ่มฟิลด์ trackingNumber
     trackingNumber: {
       type: String,
       default: ''

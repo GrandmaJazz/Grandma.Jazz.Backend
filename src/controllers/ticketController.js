@@ -63,67 +63,65 @@ const createTicket = async (req, res) => {
 
 // **🆕 NEW: Convert ticket to order for checkout**
 const convertTicketToOrder = async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const userId = req.user.id;
-
-    // Get ticket data
-    const ticket = await Ticket.findOne({ _id: ticketId, user: userId })
-      .populate('event', 'title eventDate ticketPrice');
-
-    if (!ticket) {
-      return res.status(404).json({ message: 'Ticket not found' });
+    try {
+      const { ticketId } = req.params;
+      const userId = req.user.id;
+  
+      // Get ticket data
+      const ticket = await Ticket.findOne({ _id: ticketId, user: userId })
+        .populate('event', 'title eventDate ticketPrice');
+  
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+  
+      if (ticket.status !== 'pending') {
+        return res.status(400).json({ message: 'Ticket is already processed' });
+      }
+  
+      // Get user data
+      const user = await User.findById(userId);
+  
+      if (!user.profileComplete) {
+        return res.status(400).json({ message: 'Please complete your profile before checkout' });
+      }
+  
+      // 🆕 Convert ticket to order items format - แก้ไขใหม่
+      const orderItems = [{
+        product: ticket.event._id,
+        productType: 'Event', // 🆕 ระบุว่าเป็น Event
+        name: `${ticket.event.title} - Event Tickets (${ticket.quantity} tickets)`,
+        quantity: ticket.quantity,
+        price: ticket.event.ticketPrice,
+        image: `${process.env.CLIENT_URL || 'http://localhost:3000'}/images/ticket-icon.svg`, // 🆕 ใช้ URL เต็ม
+        ticketReference: { // 🆕 เพิ่มข้อมูล ticket
+          ticketId: ticketId,
+          eventId: ticket.event._id,
+          attendees: ticket.attendees,
+          isTicketOrder: true
+        }
+      }];
+  
+      // Create checkout session using existing stripe service
+      const { session, order } = await createCheckoutSession(
+        orderItems,
+        userId,
+        'Event Venue - Details will be provided via email', // 🆕 ใช้ default address
+        user.phone
+      );
+  
+      res.json({
+        success: true,
+        sessionId: session.id,
+        sessionUrl: session.url,
+        orderId: order._id
+      });
+  
+    } catch (error) {
+      console.error('Error converting ticket to order:', error);
+      res.status(500).json({ message: 'Error processing ticket checkout', error: error.message });
     }
-
-    if (ticket.status !== 'pending') {
-      return res.status(400).json({ message: 'Ticket is already processed' });
-    }
-
-    // Get user data
-    const user = await User.findById(userId);
-
-    if (!user.profileComplete) {
-      return res.status(400).json({ message: 'Please complete your profile before checkout' });
-    }
-
-    // Convert ticket to order items format
-    const orderItems = [{
-      product: ticket.event._id, // ใช้ event id แทน product id
-      name: `${ticket.event.title} - Event Tickets`,
-      quantity: ticket.quantity,
-      price: ticket.event.ticketPrice,
-      image: '/images/ticket-placeholder.jpg'
-    }];
-
-    // Create checkout session using existing stripe service
-    const { session, order } = await createCheckoutSession(
-      orderItems,
-      userId,
-      user.address || 'Event Venue - Will be provided via email',
-      user.phone
-    );
-
-    // Store ticket reference in order for later processing
-    order.ticketReference = {
-      ticketId: ticketId,
-      isTicketOrder: true,
-      eventId: ticket.event._id,
-      attendees: ticket.attendees
-    };
-    await order.save();
-
-    res.json({
-      success: true,
-      sessionId: session.id,
-      sessionUrl: session.url,
-      orderId: order._id
-    });
-
-  } catch (error) {
-    console.error('Error converting ticket to order:', error);
-    res.status(500).json({ message: 'Error processing ticket checkout', error: error.message });
-  }
-};
+  };
 
 // Get user's tickets
 const getUserTickets = async (req, res) => {

@@ -131,7 +131,7 @@ const handleWebhook = async (payload, signature) => {
     // ตรวจสอบค่า webhook secret
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret || webhookSecret === 'your_stripe_webhook_secret') {
-      console.warn('คำเตือน: STRIPE_WEBHOOK_SECRET ไม่ถูกกำหนดหรือเป็นค่าเริ่มต้น');
+      console.warn('คำเตือน: STRIPE_WEBHOOK_SECRET ไม่ถูกกำหนดหรือไม่ถูกต้อง');
     }
 
     const event = stripe.webhooks.constructEvent(
@@ -160,6 +160,23 @@ const handleWebhook = async (payload, signature) => {
           
           await order.save();
           console.log(`Webhook: Order ${orderId} marked as paid`);
+
+          // 🆕 หากเป็น ticket order ให้อัปเดต ticket status ด้วย
+          const ticketOrderItem = order.orderItems.find(item => 
+            item.ticketReference && item.ticketReference.isTicketOrder
+          );
+          
+          if (ticketOrderItem && ticketOrderItem.ticketReference.ticketId) {
+            const Ticket = require('../models/Ticket');
+            await Ticket.findByIdAndUpdate(
+              ticketOrderItem.ticketReference.ticketId,
+              {
+                status: 'paid',
+                paymentId: session.payment_intent
+              }
+            );
+            console.log(`Webhook: Ticket ${ticketOrderItem.ticketReference.ticketId} marked as paid`);
+          }
         }
       }
     }
