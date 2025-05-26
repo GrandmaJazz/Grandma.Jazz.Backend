@@ -1,6 +1,6 @@
 // backend/src/services/stripeService.js
 require('dotenv').config(); // ตรวจสอบให้แน่ใจว่าได้โหลด .env
-
+const { createTicketCheckoutSession, verifyTicketPayment } = require('../services/stripeService');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
 // ตรวจสอบค่า API key
