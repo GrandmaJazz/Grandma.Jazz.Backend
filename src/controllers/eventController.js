@@ -101,14 +101,14 @@ const createEvent = async (req, res) => {
 // Update event
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, isActive, ticketPrice } = req.body;
+    const { title, description, eventDate, ticketPrice, isActive } = req.body;
     
     const updateData = {
       title,
       description,
       eventDate: new Date(eventDate),
-      isActive,
-      ticketPrice: parseFloat(ticketPrice) || 0
+      ticketPrice: parseFloat(ticketPrice) || 0,
+      isActive
     };
 
     // If new video file is uploaded

@@ -27,7 +27,7 @@ const cardRoutes = require('./routes/cardRoutes');
 const musicRoutes = require('./routes/musicRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const eventRoutes = require('./routes/eventRoutes');
-const bookingRoutes = require('./routes/bookingRoutes');
+const ticketRoutes = require('./routes/ticketRoutes');
 
 // สร้างแอปพลิเคชัน Express
 const app = express();
@@ -69,7 +69,7 @@ app.use('/api/cards', cardRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/blogs', blogRoutes);
 app.use('/api/events', eventRoutes);
-app.use('/api/bookings', bookingRoutes);
+app.use('/api/tickets', ticketRoutes);
 
 // Webhook route สำหรับ Stripe (ใช้ raw body parser)
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
