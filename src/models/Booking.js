@@ -47,6 +47,12 @@ const bookingSchema = new mongoose.Schema({
   paymentId: {
     type: String
   },
+  stripeSessionId: {
+    type: String
+  },
+  paidAt: {
+    type: Date
+  },
   bookingReference: {
     type: String,
     unique: true,

@@ -5,7 +5,9 @@ const {
   getUserBookings,
   getBookingById,
   updateBookingPayment,
-  getAllBookings
+  getAllBookings,
+  createBookingPayment,
+  verifyBookingPayment
 } = require('../controllers/bookingController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -17,6 +19,8 @@ router.post('/', createBooking);
 router.get('/my-bookings', getUserBookings);
 router.get('/:id', getBookingById);
 router.put('/:id/payment', updateBookingPayment);
+router.post('/:id/create-payment', createBookingPayment);
+router.post('/verify-payment', verifyBookingPayment);
 
 // Admin routes (you may want to add admin middleware here)
 router.get('/admin/all', getAllBookings);

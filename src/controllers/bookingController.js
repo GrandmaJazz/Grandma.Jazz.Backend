@@ -1,5 +1,6 @@
 const Booking = require('../models/Booking');
 const Event = require('../models/Event');
+const { createCheckoutSession } = require('../services/stripeService');
 
 // Create new booking
 const createBooking = async (req, res) => {
@@ -157,10 +158,93 @@ const getAllBookings = async (req, res) => {
   }
 };
 
+// Create Stripe checkout session for booking payment
+const createBookingPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Get booking details
+    const booking = await Booking.findOne({ _id: id, user: userId })
+      .populate('event', 'title eventDate')
+      .populate('user', 'name surname email phone');
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (booking.paymentStatus === 'paid') {
+      return res.status(400).json({ message: 'Booking already paid' });
+    }
+
+    // Create order items for Stripe
+    const orderItems = [{
+      name: `Event Ticket: ${booking.event.title}`,
+      price: booking.ticketPrice,
+      quantity: booking.totalTickets,
+      image: '/images/event-ticket.jpg' // Default ticket image
+    }];
+
+    // Create checkout session
+    const { session } = await createCheckoutSession(
+      orderItems,
+      userId,
+      `Event: ${booking.event.title}`, // Use event title as shipping address
+      booking.user.phone || ''
+    );
+
+    // Update booking with session info
+    booking.stripeSessionId = session.id;
+    await booking.save();
+
+    res.json({
+      success: true,
+      sessionUrl: session.url,
+      sessionId: session.id
+    });
+  } catch (error) {
+    console.error('Error creating booking payment:', error);
+    res.status(500).json({ message: 'Error creating payment session', error: error.message });
+  }
+};
+
+// Verify booking payment
+const verifyBookingPayment = async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    const userId = req.user.id;
+
+    // Find booking by session ID
+    const booking = await Booking.findOne({ 
+      stripeSessionId: sessionId, 
+      user: userId 
+    }).populate('event', 'title eventDate');
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Update payment status
+    booking.paymentStatus = 'paid';
+    booking.paidAt = new Date();
+    await booking.save();
+
+    res.json({
+      success: true,
+      booking
+    });
+  } catch (error) {
+    console.error('Error verifying booking payment:', error);
+    res.status(500).json({ message: 'Error verifying payment', error: error.message });
+  }
+};
+
 module.exports = {
   createBooking,
   getUserBookings,
   getBookingById,
   updateBookingPayment,
-  getAllBookings
+  getAllBookings,
+  createBookingPayment,
+  verifyBookingPayment
 }; 

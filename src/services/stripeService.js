@@ -160,6 +160,19 @@ const handleWebhook = async (payload, signature) => {
           
           await order.save();
           console.log(`Webhook: Order ${orderId} marked as paid`);
+        } else {
+          // If not an order, try to find booking by session ID
+          const Booking = require('../models/Booking');
+          const booking = await Booking.findOne({ stripeSessionId: session.id });
+          
+          if (booking) {
+            booking.paymentStatus = 'paid';
+            booking.paidAt = new Date();
+            booking.paymentId = session.payment_intent;
+            
+            await booking.save();
+            console.log(`Webhook: Booking ${booking._id} marked as paid`);
+          }
         }
       }
     }
