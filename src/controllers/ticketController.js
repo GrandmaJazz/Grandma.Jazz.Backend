@@ -1,7 +1,5 @@
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
-const User = require('../models/User');
-const { createCheckoutSession } = require('../services/stripeService');
 
 // Create new ticket booking
 const createTicket = async (req, res) => {
@@ -37,13 +35,13 @@ const createTicket = async (req, res) => {
 
     // Create ticket
     const ticket = new Ticket({
-      event: eventId,
-      user: userId,
-      attendees,
-      quantity,
-      totalAmount,
-      ticketNumber: `TKT-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-    });
+        event: eventId,
+        user: userId,
+        attendees,
+        quantity,
+        totalAmount,
+        ticketNumber: `TKT-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+      });
 
     await ticket.save();
     
@@ -60,68 +58,6 @@ const createTicket = async (req, res) => {
     res.status(500).json({ message: 'Error creating ticket booking', error: error.message });
   }
 };
-
-// **🆕 NEW: Convert ticket to order for checkout**
-const convertTicketToOrder = async (req, res) => {
-    try {
-      const { ticketId } = req.params;
-      const userId = req.user.id;
-  
-      // Get ticket data
-      const ticket = await Ticket.findOne({ _id: ticketId, user: userId })
-        .populate('event', 'title eventDate ticketPrice');
-  
-      if (!ticket) {
-        return res.status(404).json({ message: 'Ticket not found' });
-      }
-  
-      if (ticket.status !== 'pending') {
-        return res.status(400).json({ message: 'Ticket is already processed' });
-      }
-  
-      // Get user data
-      const user = await User.findById(userId);
-  
-      if (!user.profileComplete) {
-        return res.status(400).json({ message: 'Please complete your profile before checkout' });
-      }
-  
-      // 🆕 Convert ticket to order items format - แก้ไขใหม่
-      const orderItems = [{
-        product: ticket.event._id,
-        productType: 'Event', // 🆕 ระบุว่าเป็น Event
-        name: `${ticket.event.title} - Event Tickets (${ticket.quantity} tickets)`,
-        quantity: ticket.quantity,
-        price: ticket.event.ticketPrice,
-        image: `${process.env.CLIENT_URL || 'http://localhost:3000'}/images/ticket-icon.svg`, // 🆕 ใช้ URL เต็ม
-        ticketReference: { // 🆕 เพิ่มข้อมูล ticket
-          ticketId: ticketId,
-          eventId: ticket.event._id,
-          attendees: ticket.attendees,
-          isTicketOrder: true
-        }
-      }];
-  
-      // Create checkout session using existing stripe service
-      const { session, order } = await createCheckoutSession(
-        orderItems,
-        userId,
-        'Event Venue - Details will be provided via email', // 🆕 ใช้ default address
-        user.phone
-      );
-  
-      res.json({
-        success: true,
-        sessionId: session.id,
-        sessionUrl: session.url,
-        orderId: order._id
-      });
-  
-    } catch (error) {
-      console.error('Error converting ticket to order:', error);
-      res.status(500).json({ message: 'Error processing ticket checkout', error: error.message });
-    }
-  };
 
 // Get user's tickets
 const getUserTickets = async (req, res) => {
@@ -244,12 +180,86 @@ const getAllTickets = async (req, res) => {
   }
 };
 
-module.exports = {
-  createTicket,
-  convertTicketToOrder, 
-  getUserTickets,
-  getTicketById,
-  updateTicketStatus,
-  cancelTicket,
-  getAllTickets
-};
+// Create checkout session for ticket
+const createTicketCheckout = async (req, res) => {
+    try {
+      const { ticketId } = req.body;
+      const userId = req.user.id;
+  
+      if (!ticketId) {
+        return res.status(400).json({ message: 'Ticket ID is required' });
+      }
+  
+      // สร้าง checkout session
+      const { session, ticket } = await createTicketCheckoutSession(ticketId, userId);
+  
+      res.status(200).json({
+        success: true,
+        sessionId: session.id,
+        sessionUrl: session.url,
+        ticket: {
+          _id: ticket._id,
+          ticketNumber: ticket.ticketNumber,
+          totalAmount: ticket.totalAmount,
+          status: ticket.status
+        }
+      });
+    } catch (error) {
+      console.error('Error creating ticket checkout:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Error creating ticket checkout session', 
+        error: error.message 
+      });
+    }
+  };
+  
+  // Verify ticket payment
+  const verifyTicketPaymentStatus = async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+  
+      if (!sessionId) {
+        return res.status(400).json({ message: 'Session ID is required' });
+      }
+  
+      const { success, ticket } = await verifyTicketPayment(sessionId);
+  
+      if (success) {
+        res.json({
+          success: true,
+          paid: true,
+          ticket: {
+            _id: ticket._id,
+            ticketNumber: ticket.ticketNumber,
+            status: ticket.status,
+            paymentId: ticket.paymentId
+          }
+        });
+      } else {
+        res.json({
+          success: true,
+          paid: false
+        });
+      }
+    } catch (error) {
+      console.error('Error verifying ticket payment:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Error verifying ticket payment', 
+        error: error.message 
+      });
+    }
+  };
+  
+  // อัปเดต module.exports
+  module.exports = {
+    createTicket,
+    getUserTickets,
+    getTicketById,
+    updateTicketStatus,
+    cancelTicket,
+    getAllTickets,
+    createTicketCheckout, // เพิ่มใหม่
+    verifyTicketPaymentStatus // เพิ่มใหม่
+  };

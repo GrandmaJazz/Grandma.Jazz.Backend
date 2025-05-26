@@ -13,9 +13,10 @@ if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSe
 
 const stripe = require('stripe')(stripeSecretKey);
 const Order = require('../models/Order');
+const Ticket = require('../models/Ticket');
 const { ORDER_STATUS } = require('../config/constants');
 
-// สร้าง checkout session
+// สร้าง checkout session สำหรับ Order (เดิม)
 const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone) => {
   try {
     // ตรวจสอบอีกครั้งก่อนใช้งาน
@@ -69,7 +70,8 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
-        orderId: order._id.toString()
+        orderId: order._id.toString(),
+        type: 'order' // identifier สำหรับ webhook
       }
     });
 
@@ -88,7 +90,74 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
   }
 };
 
-// ตรวจสอบสถานะการชำระเงิน
+// สร้าง checkout session สำหรับ Ticket (ใหม่)
+const createTicketCheckoutSession = async (ticketId, userId) => {
+  try {
+    // ตรวจสอบ API key
+    if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
+      throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
+    }
+
+    // ดึงข้อมูล ticket พร้อม event details
+    const ticket = await Ticket.findById(ticketId)
+      .populate('event', 'title eventDate ticketPrice')
+      .populate('user', 'name email phone');
+
+    if (!ticket || ticket.user._id.toString() !== userId.toString()) {
+      throw new Error('ไม่พบตั๋วหรือไม่มีสิทธิ์เข้าถึง');
+    }
+
+    if (ticket.status === 'paid') {
+      throw new Error('ตั๋วนี้ชำระเงินแล้ว');
+    }
+
+    if (ticket.status === 'cancelled') {
+      throw new Error('ตั๋วนี้ถูกยกเลิกแล้ว');
+    }
+
+    // สร้าง line items สำหรับ Stripe
+    const lineItems = [{
+      price_data: {
+        currency: 'thb',
+        product_data: {
+          name: `${ticket.event.title} - Concert Tickets`,
+          description: `${ticket.quantity} ticket(s) for ${ticket.event.title}`,
+          images: [`${process.env.CLIENT_URL}/images/concert-ticket.jpg`] // placeholder image
+        },
+        unit_amount: Math.round(ticket.event.ticketPrice * 100) // แปลงเป็นสตางค์
+      },
+      quantity: ticket.quantity
+    }];
+
+    // เตรียม URLs สำหรับ redirect
+    const successUrl = `${process.env.CLIENT_URL}/ticket-checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${process.env.CLIENT_URL}/ticket-checkout/cancel?ticketId=${ticketId}`;
+    
+    console.log('Creating Stripe ticket checkout session with URLs:', { successUrl, cancelUrl });
+
+    // สร้าง session สำหรับการชำระเงิน
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: lineItems,
+      mode: 'payment',
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      customer_email: ticket.user.email,
+      metadata: {
+        ticketId: ticket._id.toString(),
+        type: 'ticket' // identifier สำหรับ webhook
+      }
+    });
+
+    console.log('Stripe ticket checkout session created successfully:', session.id);
+    return { session, ticket };
+  } catch (error) {
+    console.error('Stripe ticket checkout error:', error);
+    throw new Error('ไม่สามารถสร้าง ticket checkout session ได้: ' + (error.message || 'Unknown error'));
+  }
+};
+
+// ตรวจสอบสถานะการชำระเงินสำหรับ Order (เดิม)
 const verifyPayment = async (sessionId) => {
   try {
     // ตรวจสอบอีกครั้งก่อนใช้งาน
@@ -125,13 +194,49 @@ const verifyPayment = async (sessionId) => {
   }
 };
 
-// จัดการ webhook จาก Stripe
+// ตรวจสอบสถานะการชำระเงินสำหรับ Ticket (ใหม่)
+const verifyTicketPayment = async (sessionId) => {
+  try {
+    // ตรวจสอบ API key
+    if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
+      throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
+    }
+
+    console.log('Verifying ticket payment for session:', sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    
+    if (session.payment_status === 'paid' && session.metadata.type === 'ticket') {
+      const ticketId = session.metadata.ticketId;
+      
+      // อัปเดตสถานะ ticket ในฐานข้อมูล
+      const ticket = await Ticket.findById(ticketId)
+        .populate('event', 'title eventDate ticketPrice');
+      
+      if (ticket) {
+        ticket.status = 'paid';
+        ticket.paymentId = session.payment_intent;
+        
+        await ticket.save();
+        console.log(`Ticket ${ticketId} marked as paid`);
+        
+        return { success: true, ticket };
+      }
+    }
+    
+    return { success: false };
+  } catch (error) {
+    console.error('Verify ticket payment error:', error);
+    throw new Error('ไม่สามารถตรวจสอบสถานะการชำระเงินตั๋วได้: ' + (error.message || 'Unknown error'));
+  }
+};
+
+// จัดการ webhook จาก Stripe (อัปเดต - รองรับทั้ง Order และ Ticket)
 const handleWebhook = async (payload, signature) => {
   try {
     // ตรวจสอบค่า webhook secret
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret || webhookSecret === 'your_stripe_webhook_secret') {
-      console.warn('คำเตือน: STRIPE_WEBHOOK_SECRET ไม่ถูกกำหนดหรือไม่ถูกต้อง');
+      console.warn('คำเตือน: STRIPE_WEBHOOK_SECRET ไม่ถูกกำหนดหรือเป็นค่าเริ่มต้น');
     }
 
     const event = stripe.webhooks.constructEvent(
@@ -147,35 +252,32 @@ const handleWebhook = async (payload, signature) => {
       
       // ตรวจสอบว่าการชำระเงินสำเร็จ
       if (session.payment_status === 'paid') {
-        const orderId = session.metadata.orderId;
-        
-        // อัปเดตสถานะคำสั่งซื้อในฐานข้อมูลของเรา
-        const order = await Order.findById(orderId);
-        
-        if (order) {
-          order.isPaid = true;
-          order.paidAt = Date.now();
-          order.status = ORDER_STATUS.PAID;
-          order.paymentId = session.payment_intent;
+        // ตรวจสอบว่าเป็น ticket หรือ order
+        if (session.metadata.type === 'ticket') {
+          // จัดการ ticket payment
+          const ticketId = session.metadata.ticketId;
           
-          await order.save();
-          console.log(`Webhook: Order ${orderId} marked as paid`);
-
-          // 🆕 หากเป็น ticket order ให้อัปเดต ticket status ด้วย
-          const ticketOrderItem = order.orderItems.find(item => 
-            item.ticketReference && item.ticketReference.isTicketOrder
-          );
+          const ticket = await Ticket.findById(ticketId);
+          if (ticket) {
+            ticket.status = 'paid';
+            ticket.paymentId = session.payment_intent;
+            
+            await ticket.save();
+            console.log(`Webhook: Ticket ${ticketId} marked as paid`);
+          }
+        } else {
+          // จัดการ order payment (เดิม)
+          const orderId = session.metadata.orderId;
           
-          if (ticketOrderItem && ticketOrderItem.ticketReference.ticketId) {
-            const Ticket = require('../models/Ticket');
-            await Ticket.findByIdAndUpdate(
-              ticketOrderItem.ticketReference.ticketId,
-              {
-                status: 'paid',
-                paymentId: session.payment_intent
-              }
-            );
-            console.log(`Webhook: Ticket ${ticketOrderItem.ticketReference.ticketId} marked as paid`);
+          const order = await Order.findById(orderId);
+          if (order) {
+            order.isPaid = true;
+            order.paidAt = Date.now();
+            order.status = ORDER_STATUS.PAID;
+            order.paymentId = session.payment_intent;
+            
+            await order.save();
+            console.log(`Webhook: Order ${orderId} marked as paid`);
           }
         }
       }
@@ -188,4 +290,10 @@ const handleWebhook = async (payload, signature) => {
   }
 };
 
-module.exports = { createCheckoutSession, verifyPayment, handleWebhook };
+module.exports = { 
+  createCheckoutSession, 
+  verifyPayment, 
+  handleWebhook,
+  createTicketCheckoutSession, // เพิ่มใหม่
+  verifyTicketPayment // เพิ่มใหม่
+};
