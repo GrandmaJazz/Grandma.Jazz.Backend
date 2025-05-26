@@ -5,7 +5,7 @@ const Event = require('../models/Event');
 const createTicket = async (req, res) => {
   try {
     const { eventId, attendees, quantity } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     // Validate event exists and is active
     const event = await Event.findById(eventId);
@@ -49,23 +49,24 @@ const createTicket = async (req, res) => {
     
     res.status(201).json({
       success: true,
-      ticket
+      ticket,
+      message: 'Ticket booking created successfully'
     });
   } catch (error) {
     console.error('Error creating ticket:', error);
-    res.status(500).json({ message: 'Error creating ticket', error: error.message });
+    res.status(500).json({ message: 'Error creating ticket booking', error: error.message });
   }
 };
 
 // Get user's tickets
 const getUserTickets = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     
     const tickets = await Ticket.find({ user: userId })
       .populate('event', 'title eventDate ticketPrice')
       .sort({ createdAt: -1 });
-    
+
     res.json({
       success: true,
       tickets
@@ -80,15 +81,15 @@ const getUserTickets = async (req, res) => {
 const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user._id;
-    
+    const userId = req.user.id;
+
     const ticket = await Ticket.findOne({ _id: id, user: userId })
       .populate('event', 'title eventDate ticketPrice');
-    
+
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found' });
     }
-    
+
     res.json({
       success: true,
       ticket
@@ -104,40 +105,70 @@ const updateTicketStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, paymentId } = req.body;
-    
+
     const updateData = { status };
     if (paymentId) {
       updateData.paymentId = paymentId;
     }
-    
+
     const ticket = await Ticket.findByIdAndUpdate(
       id,
       updateData,
       { new: true, runValidators: true }
     ).populate('event', 'title eventDate ticketPrice');
-    
+
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found' });
     }
-    
+
     res.json({
       success: true,
-      ticket
+      ticket,
+      message: 'Ticket status updated successfully'
     });
   } catch (error) {
-    console.error('Error updating ticket:', error);
-    res.status(500).json({ message: 'Error updating ticket', error: error.message });
+    console.error('Error updating ticket status:', error);
+    res.status(500).json({ message: 'Error updating ticket status', error: error.message });
   }
 };
 
-// Get all tickets (admin only)
+// Cancel ticket
+const cancelTicket = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const ticket = await Ticket.findOne({ _id: id, user: userId });
+
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    if (ticket.status === 'paid') {
+      return res.status(400).json({ message: 'Cannot cancel paid ticket' });
+    }
+
+    ticket.status = 'cancelled';
+    await ticket.save();
+
+    res.json({
+      success: true,
+      message: 'Ticket cancelled successfully'
+    });
+  } catch (error) {
+    console.error('Error cancelling ticket:', error);
+    res.status(500).json({ message: 'Error cancelling ticket', error: error.message });
+  }
+};
+
+// Admin: Get all tickets
 const getAllTickets = async (req, res) => {
   try {
     const tickets = await Ticket.find()
       .populate('event', 'title eventDate ticketPrice')
       .populate('user', 'name email')
       .sort({ createdAt: -1 });
-    
+
     res.json({
       success: true,
       tickets
@@ -153,5 +184,6 @@ module.exports = {
   getUserTickets,
   getTicketById,
   updateTicketStatus,
+  cancelTicket,
   getAllTickets
 }; 
