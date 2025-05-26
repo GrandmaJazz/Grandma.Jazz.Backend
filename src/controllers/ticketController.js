@@ -5,7 +5,7 @@ const Event = require('../models/Event');
 const createTicket = async (req, res) => {
   try {
     const { eventId, attendees, quantity } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     // Validate event exists and is active
     const event = await Event.findById(eventId);
@@ -60,7 +60,7 @@ const createTicket = async (req, res) => {
 // Get user's tickets
 const getUserTickets = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     
     const tickets = await Ticket.find({ user: userId })
       .populate('event', 'title eventDate ticketPrice')
@@ -80,7 +80,7 @@ const getUserTickets = async (req, res) => {
 const getTicketById = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
     
     const ticket = await Ticket.findOne({ _id: id, user: userId })
       .populate('event', 'title eventDate ticketPrice');
