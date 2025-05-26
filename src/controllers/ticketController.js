@@ -1,6 +1,6 @@
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
-
+const { createTicketCheckoutSession, verifyTicketPayment } = require('../services/stripeService');
 // Create new ticket booking
 const createTicket = async (req, res) => {
   try {
