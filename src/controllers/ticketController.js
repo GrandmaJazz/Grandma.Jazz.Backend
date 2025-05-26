@@ -1,5 +1,7 @@
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
+const User = require('../models/User');
+const { createCheckoutSession } = require('../services/stripeService');
 
 // Create new ticket booking
 const createTicket = async (req, res) => {
@@ -35,13 +37,13 @@ const createTicket = async (req, res) => {
 
     // Create ticket
     const ticket = new Ticket({
-        event: eventId,
-        user: userId,
-        attendees,
-        quantity,
-        totalAmount,
-        ticketNumber: `TKT-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-      });
+      event: eventId,
+      user: userId,
+      attendees,
+      quantity,
+      totalAmount,
+      ticketNumber: `TKT-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+    });
 
     await ticket.save();
     
@@ -56,6 +58,70 @@ const createTicket = async (req, res) => {
   } catch (error) {
     console.error('Error creating ticket:', error);
     res.status(500).json({ message: 'Error creating ticket booking', error: error.message });
+  }
+};
+
+// **🆕 NEW: Convert ticket to order for checkout**
+const convertTicketToOrder = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const userId = req.user.id;
+
+    // Get ticket data
+    const ticket = await Ticket.findOne({ _id: ticketId, user: userId })
+      .populate('event', 'title eventDate ticketPrice');
+
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    if (ticket.status !== 'pending') {
+      return res.status(400).json({ message: 'Ticket is already processed' });
+    }
+
+    // Get user data
+    const user = await User.findById(userId);
+
+    if (!user.profileComplete) {
+      return res.status(400).json({ message: 'Please complete your profile before checkout' });
+    }
+
+    // Convert ticket to order items format
+    const orderItems = [{
+      product: ticket.event._id, // ใช้ event id แทน product id
+      name: `${ticket.event.title} - Event Tickets`,
+      quantity: ticket.quantity,
+      price: ticket.event.ticketPrice,
+      image: '/images/ticket-placeholder.jpg'
+    }];
+
+    // Create checkout session using existing stripe service
+    const { session, order } = await createCheckoutSession(
+      orderItems,
+      userId,
+      user.address || 'Event Venue - Will be provided via email',
+      user.phone
+    );
+
+    // Store ticket reference in order for later processing
+    order.ticketReference = {
+      ticketId: ticketId,
+      isTicketOrder: true,
+      eventId: ticket.event._id,
+      attendees: ticket.attendees
+    };
+    await order.save();
+
+    res.json({
+      success: true,
+      sessionId: session.id,
+      sessionUrl: session.url,
+      orderId: order._id
+    });
+
+  } catch (error) {
+    console.error('Error converting ticket to order:', error);
+    res.status(500).json({ message: 'Error processing ticket checkout', error: error.message });
   }
 };
 
@@ -182,9 +248,10 @@ const getAllTickets = async (req, res) => {
 
 module.exports = {
   createTicket,
+  convertTicketToOrder, 
   getUserTickets,
   getTicketById,
   updateTicketStatus,
   cancelTicket,
   getAllTickets
-}; 
+};
