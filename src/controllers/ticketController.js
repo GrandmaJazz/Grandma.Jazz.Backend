@@ -35,12 +35,13 @@ const createTicket = async (req, res) => {
 
     // Create ticket
     const ticket = new Ticket({
-      event: eventId,
-      user: userId,
-      attendees,
-      quantity,
-      totalAmount
-    });
+        event: eventId,
+        user: userId,
+        attendees,
+        quantity,
+        totalAmount,
+        ticketNumber: `TKT-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+      });
 
     await ticket.save();
     
