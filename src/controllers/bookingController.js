@@ -5,7 +5,17 @@ const { createCheckoutSession } = require('../services/stripeService');
 // Create new booking
 const createBooking = async (req, res) => {
   try {
+    console.log('Creating booking with data:', req.body);
+    console.log('User:', req.user);
+    
     const { eventId, attendees, totalTickets } = req.body;
+    
+    // Check if user is authenticated
+    if (!req.user || !req.user.id) {
+      console.log('User not authenticated');
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    
     const userId = req.user.id;
 
     // Validate input
@@ -36,6 +46,11 @@ const createBooking = async (req, res) => {
 
     if (!event.isActive) {
       return res.status(400).json({ message: 'Event is not active' });
+    }
+
+    // Check if event has ticket price
+    if (event.ticketPrice === undefined || event.ticketPrice === null) {
+      return res.status(400).json({ message: 'Event ticket price not set' });
     }
 
     // Calculate total amount
