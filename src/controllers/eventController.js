@@ -75,12 +75,13 @@ const getEventById = async (req, res) => {
 // Create new event
 const createEvent = async (req, res) => {
   try {
-    const { title, description, eventDate } = req.body;
+    const { title, description, eventDate, ticketPrice } = req.body;
     
     const eventData = {
       title,
       description,
-      eventDate: new Date(eventDate)
+      eventDate: new Date(eventDate),
+      ticketPrice: parseFloat(ticketPrice) || 0
     };
 
     // If video file is uploaded
@@ -100,13 +101,14 @@ const createEvent = async (req, res) => {
 // Update event
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, isActive } = req.body;
+    const { title, description, eventDate, isActive, ticketPrice } = req.body;
     
     const updateData = {
       title,
       description,
       eventDate: new Date(eventDate),
-      isActive
+      isActive,
+      ticketPrice: parseFloat(ticketPrice) || 0
     };
 
     // If new video file is uploaded

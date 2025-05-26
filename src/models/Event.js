@@ -14,6 +14,11 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  ticketPrice: {
+    type: Number,
+    required: true,
+    default: 0
+  },
   videoPath: {
     type: String,
     default: '/videos/event-background.webm'
