@@ -7,8 +7,9 @@ const {
   updateTicketStatus,
   cancelTicket,
   getAllTickets,
-  createTicketCheckout, // เพิ่มใหม่
-  verifyTicketPaymentStatus // เพิ่มใหม่
+  createTicketCheckout,
+  verifyTicketPaymentStatus,
+  cleanupExpiredTickets
 } = require('../controllers/ticketController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -22,11 +23,12 @@ router.get('/:id', getTicketById);
 router.put('/:id/status', updateTicketStatus);
 router.delete('/:id', cancelTicket);
 
-// Payment routes - เพิ่มใหม่
+// Payment routes
 router.post('/checkout-session', createTicketCheckout);
 router.get('/verify-payment/:sessionId', verifyTicketPaymentStatus);
 
 // Admin routes (you may want to add admin middleware here)
 router.get('/admin/all', getAllTickets);
+router.post('/admin/cleanup-expired', cleanupExpiredTickets);
 
 module.exports = router;

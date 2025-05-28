@@ -1,5 +1,6 @@
 const Ticket = require('../models/Ticket');
 const Event = require('../models/Event');
+const TicketExpirationService = require('../services/ticketExpirationService');
 const { createTicketCheckoutSession, verifyTicketPayment } = require('../services/stripeService');
 // Create new ticket booking
 const createTicket = async (req, res) => {
@@ -82,6 +83,9 @@ const getUserTickets = async (req, res) => {
   try {
     const userId = req.user.id;
     
+    // First, expire any overdue tickets
+    await TicketExpirationService.expireOverdueTickets();
+    
     const tickets = await Ticket.find({ user: userId })
       .populate('event', 'title eventDate ticketPrice')
       .sort({ createdAt: -1 });
@@ -107,6 +111,23 @@ const getTicketById = async (req, res) => {
 
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Check if ticket is expired
+    if (ticket.status === 'pending' && new Date() > ticket.expiresAt) {
+      // Expire the ticket
+      ticket.status = 'expired';
+      await ticket.save();
+      
+      // Decrease sold tickets count
+      await Event.findByIdAndUpdate(ticket.event._id, {
+        $inc: { soldTickets: -ticket.quantity }
+      });
+      
+      return res.status(400).json({ 
+        message: 'This ticket has expired. Please book a new ticket.',
+        expired: true 
+      });
     }
 
     res.json({
@@ -169,6 +190,10 @@ const cancelTicket = async (req, res) => {
 
     if (ticket.status === 'cancelled') {
       return res.status(400).json({ message: 'Ticket is already cancelled' });
+    }
+
+    if (ticket.status === 'expired') {
+      return res.status(400).json({ message: 'Ticket has already expired' });
     }
 
     ticket.status = 'cancelled';
@@ -279,6 +304,26 @@ const createTicketCheckout = async (req, res) => {
     }
   };
   
+  // Manual cleanup of expired tickets (Admin function)
+  const cleanupExpiredTickets = async (req, res) => {
+    try {
+      const result = await TicketExpirationService.manualCleanup();
+      
+      res.json({
+        success: result.success,
+        message: result.message || result.error,
+        expiredCount: result.expiredCount || 0
+      });
+    } catch (error) {
+      console.error('Error in manual cleanup:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Error during cleanup', 
+        error: error.message 
+      });
+    }
+  };
+  
   // อัปเดต module.exports
   module.exports = {
     createTicket,
@@ -287,6 +332,7 @@ const createTicketCheckout = async (req, res) => {
     updateTicketStatus,
     cancelTicket,
     getAllTickets,
-    createTicketCheckout, // เพิ่มใหม่
-    verifyTicketPaymentStatus // เพิ่มใหม่
+    createTicketCheckout,
+    verifyTicketPaymentStatus,
+    cleanupExpiredTickets
   };
