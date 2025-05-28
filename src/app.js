@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
-const connectDB = require('./config/database');
 const TicketExpirationService = require('./services/ticketExpirationService');
 
 // โหลดค่าจากไฟล์ .env ก่อนที่จะมีการใช้ค่าต่างๆ
@@ -104,9 +103,6 @@ app.get('/api/cors-test', (req, res) => {
 // Middleware สำหรับจัดการข้อผิดพลาด
 app.use(notFound);
 app.use(errorHandler);
-
-// Connect to database
-connectDB();
 
 // Start automatic ticket expiration cleanup
 TicketExpirationService.startAutomaticCleanup();
