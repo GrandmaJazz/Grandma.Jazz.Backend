@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { 
+  getAllCardsAdmin,
   getCards, 
   getCardById, 
   createCard, 
   updateCard, 
   deleteCard,
   addMusicToCard,
-  removeMusicFromCard
+  removeMusicFromCard,
+  toggleCardStatus
 } = require('../controllers/cardController');
 const { protect, admin } = require('../middleware/authMiddleware');
 const multer = require('multer');
@@ -104,6 +106,10 @@ router.route('/')
     createCard
   );
 
+// Admin route to get all cards (including inactive)
+router.route('/admin/all')
+  .get(protect, admin, getAllCardsAdmin);
+
 router.route('/:id')
   .get(getCardById)
   .put(
@@ -122,5 +128,9 @@ router.route('/:id/music')
 
 router.route('/:id/music/:musicId')
   .delete(protect, admin, removeMusicFromCard);
+
+// Route for toggling card status
+router.route('/:id/status')
+  .patch(protect, admin, toggleCardStatus);
 
 module.exports = router;

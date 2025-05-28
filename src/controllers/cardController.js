@@ -5,6 +5,24 @@ const fs = require('fs');
 const path = require('path');
 const mm = require('music-metadata');
 
+// @desc    ดึงข้อมูลการ์ดทั้งหมดสำหรับแอดมิน
+// @route   GET /api/cards/admin/all
+// @access  Private/Admin
+const getAllCardsAdmin = asyncHandler(async (req, res) => {
+  const cards = await Card.find()
+    .sort({ order: 1, createdAt: -1 })
+    .populate({
+      path: 'music',
+      select: 'title filePath duration'
+    });
+  
+  res.status(200).json({
+    success: true,
+    count: cards.length,
+    cards
+  });
+});
+
 // @desc    ดึงข้อมูลการ์ดทั้งหมด
 // @route   GET /api/cards
 // @access  Public
@@ -132,7 +150,9 @@ const updateCard = asyncHandler(async (req, res) => {
   // ถ้าไม่มีการส่ง title หรือ description มา ให้ใช้ค่าเดิม
   // ไม่ใช่รับค่าจาก req.body แล้วเปลี่ยนเป็นค่าว่าง
   const updateData = {
-    isActive: req.body.isActive !== undefined ? (req.body.isActive === 'false' ? false : true) : card.isActive,
+    isActive: req.body.isActive !== undefined ? 
+      (typeof req.body.isActive === 'string' ? req.body.isActive === 'true' : Boolean(req.body.isActive)) : 
+      card.isActive,
     updatedAt: Date.now()
   };
   
@@ -341,12 +361,46 @@ const removeMusicFromCard = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Toggle card status (Active/Inactive)
+// @route   PATCH /api/cards/:id/status
+// @access  Private/Admin
+const toggleCardStatus = asyncHandler(async (req, res) => {
+  const card = await Card.findById(req.params.id);
+  
+  if (!card) {
+    res.status(404);
+    throw new Error('Card not found');
+  }
+  
+  // Toggle the status or set to specific value if provided
+  const newStatus = req.body.isActive !== undefined ? req.body.isActive : !card.isActive;
+  
+  const updatedCard = await Card.findByIdAndUpdate(
+    req.params.id,
+    { 
+      isActive: newStatus,
+      updatedAt: Date.now()
+    },
+    {
+      new: true,
+      runValidators: true
+    }
+  ).populate('music');
+  
+  res.status(200).json({
+    success: true,
+    card: updatedCard
+  });
+});
+
 module.exports = {
+  getAllCardsAdmin,
   getCards,
   getCardById,
   createCard,
   updateCard,
   deleteCard,
   addMusicToCard,
-  removeMusicFromCard
+  removeMusicFromCard,
+  toggleCardStatus
 };
