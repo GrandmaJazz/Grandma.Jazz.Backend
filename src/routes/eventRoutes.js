@@ -8,11 +8,13 @@ const {
   updateEvent,
   deleteEvent,
   toggleEventStatus,
+  getEventTicketStats,
   upload
 } = require('../controllers/eventController');
 
 // Public routes
 router.get('/active', getActiveEvent);
+router.get('/:id/ticket-stats', getEventTicketStats);
 
 // Admin routes (you may want to add authentication middleware here)
 router.get('/', getAllEvents);

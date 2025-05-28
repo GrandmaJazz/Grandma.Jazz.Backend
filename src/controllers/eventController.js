@@ -75,13 +75,14 @@ const getEventById = async (req, res) => {
 // Create new event
 const createEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, ticketPrice } = req.body;
+    const { title, description, eventDate, ticketPrice, totalTickets } = req.body;
     
     const eventData = {
       title,
       description,
       eventDate: new Date(eventDate),
-      ticketPrice: parseFloat(ticketPrice) || 0
+      ticketPrice: parseFloat(ticketPrice) || 0,
+      totalTickets: parseInt(totalTickets) || 100
     };
 
     // If video file is uploaded
@@ -101,7 +102,7 @@ const createEvent = async (req, res) => {
 // Update event
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, ticketPrice, isActive } = req.body;
+    const { title, description, eventDate, ticketPrice, totalTickets, isActive } = req.body;
     
     const updateData = {
       title,
@@ -110,6 +111,20 @@ const updateEvent = async (req, res) => {
       ticketPrice: parseFloat(ticketPrice) || 0,
       isActive
     };
+
+    // Only update totalTickets if provided and it's not less than soldTickets
+    if (totalTickets !== undefined) {
+      const currentEvent = await Event.findById(req.params.id);
+      const newTotalTickets = parseInt(totalTickets);
+      
+      if (newTotalTickets < currentEvent.soldTickets) {
+        return res.status(400).json({ 
+          message: `Cannot set total tickets to ${newTotalTickets}. Already sold ${currentEvent.soldTickets} tickets.` 
+        });
+      }
+      
+      updateData.totalTickets = newTotalTickets;
+    }
 
     // If new video file is uploaded
     if (req.file) {
@@ -188,6 +203,27 @@ const toggleEventStatus = async (req, res) => {
   }
 };
 
+// Get event ticket statistics
+const getEventTicketStats = async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    res.json({
+      eventId: event._id,
+      totalTickets: event.totalTickets,
+      soldTickets: event.soldTickets,
+      availableTickets: event.availableTickets,
+      isSoldOut: event.isSoldOut,
+      isActive: event.isActive
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching event ticket stats', error: error.message });
+  }
+};
+
 module.exports = {
   getAllEvents,
   getActiveEvent,
@@ -196,5 +232,6 @@ module.exports = {
   updateEvent,
   deleteEvent,
   toggleEventStatus,
+  getEventTicketStats,
   upload
 }; 

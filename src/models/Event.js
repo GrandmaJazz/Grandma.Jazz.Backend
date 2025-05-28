@@ -19,6 +19,17 @@ const eventSchema = new mongoose.Schema({
     required: true,
     default: 0
   },
+  totalTickets: {
+    type: Number,
+    required: true,
+    default: 100,
+    min: 1
+  },
+  soldTickets: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   videoPath: {
     type: String,
     default: '/videos/event-background.webm'
@@ -36,6 +47,20 @@ const eventSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Virtual field for available tickets
+eventSchema.virtual('availableTickets').get(function() {
+  return Math.max(0, this.totalTickets - this.soldTickets);
+});
+
+// Virtual field for sold out status
+eventSchema.virtual('isSoldOut').get(function() {
+  return this.soldTickets >= this.totalTickets;
+});
+
+// Include virtuals when converting to JSON
+eventSchema.set('toJSON', { virtuals: true });
+eventSchema.set('toObject', { virtuals: true });
 
 // Update the updatedAt field before saving
 eventSchema.pre('save', function(next) {

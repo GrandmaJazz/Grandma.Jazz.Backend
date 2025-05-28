@@ -13,6 +13,19 @@ const createTicket = async (req, res) => {
       return res.status(404).json({ message: 'Event not found or not active' });
     }
 
+    // Check if event is sold out
+    if (event.isSoldOut) {
+      return res.status(400).json({ message: 'Event is sold out' });
+    }
+
+    // Check if enough tickets are available
+    const availableTickets = event.availableTickets;
+    if (quantity > availableTickets) {
+      return res.status(400).json({ 
+        message: `Only ${availableTickets} tickets available. Cannot book ${quantity} tickets.` 
+      });
+    }
+
     // Validate quantity
     if (quantity < 1 || quantity > 10) {
       return res.status(400).json({ message: 'Quantity must be between 1 and 10' });
@@ -44,9 +57,14 @@ const createTicket = async (req, res) => {
       });
 
     await ticket.save();
+
+    // Update sold tickets count
+    await Event.findByIdAndUpdate(eventId, {
+      $inc: { soldTickets: quantity }
+    });
     
     // Populate event details
-    await ticket.populate('event', 'title eventDate ticketPrice');
+    await ticket.populate('event', 'title eventDate ticketPrice totalTickets soldTickets availableTickets isSoldOut');
     
     res.status(201).json({
       success: true,
@@ -149,8 +167,17 @@ const cancelTicket = async (req, res) => {
       return res.status(400).json({ message: 'Cannot cancel paid ticket' });
     }
 
+    if (ticket.status === 'cancelled') {
+      return res.status(400).json({ message: 'Ticket is already cancelled' });
+    }
+
     ticket.status = 'cancelled';
     await ticket.save();
+
+    // Decrease sold tickets count
+    await Event.findByIdAndUpdate(ticket.event, {
+      $inc: { soldTickets: -ticket.quantity }
+    });
 
     res.json({
       success: true,
