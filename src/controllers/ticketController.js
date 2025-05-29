@@ -14,6 +14,13 @@ const createTicket = async (req, res) => {
       return res.status(404).json({ message: 'Event not found or not active' });
     }
 
+    // Check if event date has passed
+    const now = new Date();
+    const eventDate = new Date(event.eventDate);
+    if (eventDate < now) {
+      return res.status(400).json({ message: 'Cannot book tickets for past events. This event has already occurred.' });
+    }
+
     // Check if event is sold out
     if (event.isSoldOut) {
       return res.status(400).json({ message: 'Event is sold out' });
@@ -111,6 +118,16 @@ const getTicketById = async (req, res) => {
 
     if (!ticket) {
       return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    // Check if event date has passed
+    const now = new Date();
+    const eventDate = new Date(ticket.event.eventDate);
+    if (eventDate < now) {
+      return res.status(400).json({ 
+        message: 'Cannot proceed with payment for past events. This event has already occurred.',
+        eventPassed: true 
+      });
     }
 
     // Check if ticket is expired

@@ -107,6 +107,13 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
       throw new Error('ไม่พบตั๋วหรือไม่มีสิทธิ์เข้าถึง');
     }
 
+    // Check if event date has passed
+    const now = new Date();
+    const eventDate = new Date(ticket.event.eventDate);
+    if (eventDate < now) {
+      throw new Error('ไม่สามารถชำระเงินสำหรับงานที่จัดไปแล้ว งานนี้จัดผ่านไปแล้ว');
+    }
+
     if (ticket.status === 'paid') {
       throw new Error('ตั๋วนี้ชำระเงินแล้ว');
     }
