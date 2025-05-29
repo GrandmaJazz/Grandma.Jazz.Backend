@@ -14,6 +14,11 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  eventTime: {
+    type: String,
+    required: false,
+    default: '19:00'
+  },
   ticketPrice: {
     type: Number,
     required: true,

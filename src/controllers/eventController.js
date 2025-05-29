@@ -75,12 +75,13 @@ const getEventById = async (req, res) => {
 // Create new event
 const createEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, ticketPrice, totalTickets } = req.body;
+    const { title, description, eventDate, eventTime, ticketPrice, totalTickets } = req.body;
     
     const eventData = {
       title,
       description,
       eventDate: new Date(eventDate),
+      eventTime: eventTime || '19:00',
       ticketPrice: parseFloat(ticketPrice) || 0,
       totalTickets: parseInt(totalTickets) || 100
     };
@@ -102,12 +103,13 @@ const createEvent = async (req, res) => {
 // Update event
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, eventDate, ticketPrice, totalTickets, isActive } = req.body;
+    const { title, description, eventDate, eventTime, ticketPrice, totalTickets, isActive } = req.body;
     
     const updateData = {
       title,
       description,
       eventDate: new Date(eventDate),
+      eventTime: eventTime || '19:00',
       ticketPrice: parseFloat(ticketPrice) || 0,
       isActive
     };
