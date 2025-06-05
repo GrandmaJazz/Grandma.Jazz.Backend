@@ -82,18 +82,21 @@ const getAllBlogsAdmin = asyncHandler(async (req, res) => {
 });
 
 // @desc    ดึงบล็อกตาม ID หรือ slug
-// @route   GET /api/blogs/:id
-// @access  Public
+// @route   GET /api/blogs/public/:id (Public) / GET /api/blogs/admin/:id (Admin)
+// @access  Public / Private/Admin
 const getBlogById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  
+  // ตรวจสอบว่าเป็น admin หรือไม่
+  const isAdmin = req.user && req.user.isAdmin;
   
   // ค้นหาด้วย ID หรือ slug
   const query = mongoose.Types.ObjectId.isValid(id) 
     ? { _id: id } 
     : { slug: id };
   
-  // เพิ่มเงื่อนไข published สำหรับ public access
-  if (!req.user || !req.user.isAdmin) {
+  // ถ้าไม่ใช่ admin ให้แสดงเฉพาะที่ published เท่านั้น
+  if (!isAdmin) {
     query.isPublished = true;
   }
   
@@ -106,7 +109,7 @@ const getBlogById = asyncHandler(async (req, res) => {
   }
   
   // เพิ่ม view count (ถ้าไม่ใช่ admin)
-  if (!req.user || !req.user.isAdmin) {
+  if (!isAdmin) {
     blog.views += 1;
     await blog.save();
   }
@@ -189,18 +192,23 @@ const updateBlog = asyncHandler(async (req, res) => {
   const updateData = {
     title: title || blog.title,
     content: content || blog.content,
-    excerpt: excerpt || blog.excerpt,
+    excerpt: excerpt !== undefined ? excerpt : blog.excerpt,
     images,
     tags: tags ? tags.split(',').map(tag => tag.trim()) : blog.tags,
-    isPublished: isPublished !== undefined ? isPublished === 'true' : blog.isPublished,
+    isPublished: isPublished !== undefined ? isPublished === 'true' || isPublished === true : blog.isPublished,
     seo: {
-      metaDescription: seo?.metaDescription || blog.seo?.metaDescription || '',
+      metaDescription: seo?.metaDescription !== undefined ? seo.metaDescription : blog.seo?.metaDescription || '',
       metaKeywords: seo?.metaKeywords ? 
         seo.metaKeywords.split(',').map(k => k.trim()) : 
         blog.seo?.metaKeywords || []
     },
     updatedAt: Date.now()
   };
+  
+  // ถ้าเปลี่ยนจาก draft เป็น published ให้อัปเดต publishedAt
+  if (!blog.isPublished && updateData.isPublished) {
+    updateData.publishedAt = new Date();
+  }
   
   blog = await Blog.findByIdAndUpdate(req.params.id, updateData, {
     new: true,

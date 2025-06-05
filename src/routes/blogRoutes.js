@@ -56,12 +56,12 @@ const upload = multer({
 
 // Public routes
 router.get('/', getBlogs);
-router.get('/:id', getBlogById);
+router.get('/public/:id', getBlogById); // route สำหรับ public access
 
 // Admin routes
 router.get('/admin/all', protect, admin, getAllBlogsAdmin);
 router.get('/admin/stats', protect, admin, getBlogStats);
-
+router.get('/admin/:id', protect, admin, getBlogById); // route สำหรับ admin access
 router.post('/', protect, admin, upload.array('images', 10), createBlog);
 router.put('/:id', protect, admin, upload.array('images', 10), updateBlog);
 router.delete('/:id', protect, admin, deleteBlog);
