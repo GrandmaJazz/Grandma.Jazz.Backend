@@ -5,7 +5,7 @@ const path = require('path');
 
 // สร้าง S3 client
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'ap-southeast-1',
+  region: process.env.AWS_REGION || 'ap-southeast-2',
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -103,7 +103,7 @@ const uploaders = {
 
 // ฟังก์ชันสำหรับสร้าง URL ของไฟล์ใน S3
 const getS3FileUrl = (key) => {
-  const region = process.env.AWS_REGION || 'ap-southeast-1';
+  const region = process.env.AWS_REGION || 'ap-southeast-2';
   return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
 };
 
