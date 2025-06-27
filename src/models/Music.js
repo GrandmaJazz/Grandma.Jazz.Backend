@@ -11,6 +11,10 @@ const MusicSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please upload music file']
   },
+  fileS3Key: {
+    type: String,
+    default: null
+  },
   duration: {
     type: Number,
     default: 0

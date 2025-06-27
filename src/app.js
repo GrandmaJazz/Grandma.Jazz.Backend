@@ -58,8 +58,8 @@ app.use(cors({
   credentials: true
 }));
 
-// Static folder
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Static folder - ปิดการใช้งานเพราะใช้ S3 แทน
+// app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
 app.use('/api/auth', authRoutes);

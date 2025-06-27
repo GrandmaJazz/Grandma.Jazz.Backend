@@ -2,6 +2,8 @@ const Event = require('../models/Event');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, bucketName } = require('../config/awsS3');
 
 // Configure multer for video uploads
 const storage = multer.diskStorage({
@@ -86,9 +88,10 @@ const createEvent = async (req, res) => {
       totalTickets: parseInt(totalTickets) || 100
     };
 
-    // If video file is uploaded
+    // If video file is uploaded to S3
     if (req.file) {
-      eventData.videoPath = `/uploads/videos/${req.file.filename}`;
+      eventData.videoPath = req.file.location; // S3 URL
+      eventData.videoS3Key = req.file.key; // S3 key for deletion
     }
 
     const event = new Event(eventData);
@@ -128,16 +131,22 @@ const updateEvent = async (req, res) => {
       updateData.totalTickets = newTotalTickets;
     }
 
-    // If new video file is uploaded
+    // If new video file is uploaded to S3
     if (req.file) {
-      updateData.videoPath = `/uploads/videos/${req.file.filename}`;
+      updateData.videoPath = req.file.location; // S3 URL
+      updateData.videoS3Key = req.file.key; // S3 key
       
-      // Delete old video file if it exists and is not the default
+      // Delete old video from S3 if it exists
       const oldEvent = await Event.findById(req.params.id);
-      if (oldEvent && oldEvent.videoPath && oldEvent.videoPath !== '/videos/event-background.webm') {
-        const oldFilePath = path.join(__dirname, '../../', oldEvent.videoPath);
-        if (fs.existsSync(oldFilePath)) {
-          fs.unlinkSync(oldFilePath);
+      if (oldEvent && oldEvent.videoS3Key) {
+        try {
+          const deleteParams = {
+            Bucket: bucketName,
+            Key: oldEvent.videoS3Key
+          };
+          await s3Client.send(new DeleteObjectCommand(deleteParams));
+        } catch (deleteError) {
+          console.error('Error deleting old video from S3:', deleteError);
         }
       }
     }
@@ -167,11 +176,16 @@ const deleteEvent = async (req, res) => {
       return res.status(404).json({ message: 'Event not found' });
     }
 
-    // Delete video file if it exists and is not the default
-    if (event.videoPath && event.videoPath !== '/videos/event-background.webm') {
-      const filePath = path.join(__dirname, '../../', event.videoPath);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+    // Delete video from S3 if it exists
+    if (event.videoS3Key) {
+      try {
+        const deleteParams = {
+          Bucket: bucketName,
+          Key: event.videoS3Key
+        };
+        await s3Client.send(new DeleteObjectCommand(deleteParams));
+      } catch (deleteError) {
+        console.error('Error deleting video from S3:', deleteError);
       }
     }
 

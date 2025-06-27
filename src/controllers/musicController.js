@@ -4,6 +4,8 @@ const asyncHandler = require('express-async-handler');
 const fs = require('fs');
 const path = require('path');
 const mm = require('music-metadata');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, bucketName } = require('../config/awsS3');
 
 // @desc    ดึงข้อมูลเพลงทั้งหมด
 // @route   GET /api/music
@@ -48,24 +50,24 @@ const createMusic = asyncHandler(async (req, res) => {
     throw new Error('Please upload a music file');
   }
   
-  const filePath = `/uploads/music/${req.file.filename}`;
-  const fullPath = path.join(__dirname, '..', '..', filePath);
-  
   // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
   const fileName = req.file.originalname.split('.').slice(0, -1).join('.');
   
   // อ่านข้อมูล metadata จากไฟล์เพลง
   let duration = 0;
   try {
-    const metadata = await mm.parseFile(fullPath);
-    duration = metadata.format.duration || 0;
+    // เนื่องจากไฟล์อยู่บน S3 เราอาจต้อง stream หรือ download ชั่วคราว
+    // หรือจะเก็บ duration จาก frontend
+    // ตอนนี้ให้ใช้ค่า default ไปก่อน
+    duration = 0;
   } catch (error) {
     console.error('Error parsing music metadata:', error);
   }
   
   const music = await Music.create({
     title: fileName, // ใช้ชื่อไฟล์แทนชื่อเพลง
-    filePath,
+    filePath: req.file.location, // S3 URL
+    fileS3Key: req.file.key, // S3 key for deletion
     duration
   });
   
@@ -98,30 +100,29 @@ const updateMusic = asyncHandler(async (req, res) => {
   
   // ถ้ามีการอัปโหลดไฟล์เพลงใหม่
   if (req.file) {
-    // ลบไฟล์เพลงเก่า (ถ้ามี)
-    if (music.filePath) {
-      const oldFilePath = path.join(__dirname, '..', '..', music.filePath);
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlinkSync(oldFilePath);
+    // ลบไฟล์เพลงเก่าจาก S3 (ถ้ามี)
+    if (music.fileS3Key) {
+      try {
+        const deleteParams = {
+          Bucket: bucketName,
+          Key: music.fileS3Key
+        };
+        await s3Client.send(new DeleteObjectCommand(deleteParams));
+      } catch (deleteError) {
+        console.error('Error deleting old music file from S3:', deleteError);
       }
     }
     
-    const filePath = `/uploads/music/${req.file.filename}`;
-    updateData.filePath = filePath;
+    updateData.filePath = req.file.location; // S3 URL
+    updateData.fileS3Key = req.file.key; // S3 key
     
     // ถ้าไม่มีการระบุชื่อเพลงใหม่ ใช้ชื่อไฟล์
     if (!req.body.title) {
       updateData.title = req.file.originalname.split('.').slice(0, -1).join('.');
     }
     
-    // อ่านข้อมูล metadata จากไฟล์เพลงใหม่
-    const fullPath = path.join(__dirname, '..', '..', filePath);
-    try {
-      const metadata = await mm.parseFile(fullPath);
-      updateData.duration = metadata.format.duration || 0;
-    } catch (error) {
-      console.error('Error parsing music metadata:', error);
-    }
+    // สำหรับ metadata จาก S3 อาจต้องใช้วิธีอื่น
+    updateData.duration = 0;
   }
   
   music = await Music.findByIdAndUpdate(req.params.id, updateData, {
@@ -146,11 +147,16 @@ const deleteMusic = asyncHandler(async (req, res) => {
     throw new Error('Music not found');
   }
   
-  // ลบไฟล์เพลง
-  if (music.filePath) {
-    const filePath = path.join(__dirname, '..', '..', music.filePath);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+  // ลบไฟล์เพลงจาก S3
+  if (music.fileS3Key) {
+    try {
+      const deleteParams = {
+        Bucket: bucketName,
+        Key: music.fileS3Key
+      };
+      await s3Client.send(new DeleteObjectCommand(deleteParams));
+    } catch (deleteError) {
+      console.error('Error deleting music file from S3:', deleteError);
     }
   }
   

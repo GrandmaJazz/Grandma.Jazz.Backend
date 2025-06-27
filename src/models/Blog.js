@@ -23,6 +23,10 @@ const BlogSchema = new mongoose.Schema({
       type: String,
       required: true
     },
+    s3Key: {
+      type: String,
+      default: null
+    },
     caption: {
       type: String,
       trim: true

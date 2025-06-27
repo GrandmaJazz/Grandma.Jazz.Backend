@@ -1,79 +1,25 @@
 //backend/src/controllers/uploadController.js
 const asyncHandler = require('express-async-handler');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const { uploaders, getS3FileUrl } = require('../config/awsS3');
 
-// กำหนดค่าการจัดเก็บไฟล์
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    // สร้างโฟลเดอร์ uploads หากยังไม่มี
-    const uploadDir = 'uploads/';
-    
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    
-    cb(null, uploadDir);
-  },
-  filename(req, file, cb) {
-    // กำหนดชื่อไฟล์ให้ไม่ซ้ำกัน
-    cb(
-      null,
-      `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`
-    );
-  }
-});
-
-// ตรวจสอบประเภทไฟล์ (เฉพาะรูปภาพ)
-function checkFileType(file, cb) {
-  const filetypes = /jpg|jpeg|png|webp/;
-  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = filetypes.test(file.mimetype);
-
-  if (extname && mimetype) {
-    return cb(null, true);
-  } else {
-    cb(new Error('รองรับเฉพาะไฟล์รูปภาพเท่านั้น (jpg, jpeg, png, webp)'));
-  }
-}
-
-// กำหนดค่า multer
-const upload = multer({
-  storage,
-  fileFilter: function(req, file, cb) {
-    checkFileType(file, cb);
-  },
-  limits: {
-    fileSize: 5 * 1024 * 1024 // จำกัดขนาดไฟล์ 5MB
-  }
-});
-
-// @desc    อัปโหลดไฟล์
+// @desc    อัปโหลดไฟล์รูปภาพไปยัง S3
 // @route   POST /api/upload
 // @access  Private/Admin
-const uploadFile = (req, res) => {
-  // ใช้ upload.single สำหรับอัปโหลดไฟล์เดียว
-  upload.single('image')(req, res, function(error) {
+const uploadFile = asyncHandler(async (req, res) => {
+  // ใช้ imageUpload สำหรับอัปโหลดรูปภาพเดียว
+  uploaders.imageUpload.single('image')(req, res, function(error) {
     if (error) {
       // จัดการข้อผิดพลาดจาก multer
-      if (error instanceof multer.MulterError) {
-        if (error.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({
-            success: false,
-            message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 5MB)'
-          });
-        }
-        
+      if (error.message && error.message.includes('File too large')) {
         return res.status(400).json({
           success: false,
-          message: error.message
+          message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 5MB)'
         });
       }
       
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message || 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์'
       });
     }
     
@@ -84,54 +30,50 @@ const uploadFile = (req, res) => {
       });
     }
     
-    // สร้าง URL สำหรับเข้าถึงไฟล์
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const fileUrl = `${baseUrl}/${req.file.path.replace(/\\/g, '/')}`;
+    // สร้าง URL สำหรับเข้าถึงไฟล์จาก S3
+    const fileUrl = req.file.location; // multer-s3 จะใส่ location ให้อัตโนมัติ
     
     res.status(201).json({
       success: true,
       message: 'อัปโหลดไฟล์สำเร็จ',
       file: {
-        filename: req.file.filename,
-        path: req.file.path,
-        url: fileUrl
+        filename: req.file.key, // S3 key
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        url: fileUrl,
+        s3Key: req.file.key,
+        bucket: req.file.bucket
       }
     });
   });
-};
+});
 
-// @desc    อัปโหลดหลายไฟล์
+// @desc    อัปโหลดหลายไฟล์รูปภาพไปยัง S3
 // @route   POST /api/upload/multiple
-// @access  Private/Admin
-const uploadMultipleFiles = (req, res) => {
-  // ใช้ upload.array สำหรับอัปโหลดหลายไฟล์ (สูงสุด 10 ไฟล์)
-  upload.array('images', 10)(req, res, function(error) {
+// @access  Private/Admin  
+const uploadMultipleFiles = asyncHandler(async (req, res) => {
+  // ใช้ imageUpload สำหรับอัปโหลดหลายไฟล์ (สูงสุด 10 ไฟล์)
+  uploaders.imageUpload.array('images', 10)(req, res, function(error) {
     if (error) {
       // จัดการข้อผิดพลาดจาก multer
-      if (error instanceof multer.MulterError) {
-        if (error.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({
-            success: false,
-            message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 5MB ต่อไฟล์)'
-          });
-        }
-        
-        if (error.code === 'LIMIT_UNEXPECTED_FILE') {
-          return res.status(400).json({
-            success: false,
-            message: 'จำนวนไฟล์มากเกินไป (สูงสุด 10 ไฟล์)'
-          });
-        }
-        
+      if (error.message && error.message.includes('File too large')) {
         return res.status(400).json({
           success: false,
-          message: error.message
+          message: 'ไฟล์มีขนาดใหญ่เกินไป (สูงสุด 5MB ต่อไฟล์)'
+        });
+      }
+      
+      if (error.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({
+          success: false,
+          message: 'จำนวนไฟล์มากเกินไป (สูงสุด 10 ไฟล์)'
         });
       }
       
       return res.status(400).json({
         success: false,
-        message: error.message
+        message: error.message || 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์'
       });
     }
     
@@ -142,17 +84,16 @@ const uploadMultipleFiles = (req, res) => {
       });
     }
     
-    // สร้าง URL สำหรับเข้าถึงไฟล์
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const files = req.files.map(file => {
-      const fileUrl = `${baseUrl}/${file.path.replace(/\\/g, '/')}`;
-      
-      return {
-        filename: file.filename,
-        path: file.path,
-        url: fileUrl
-      };
-    });
+    // สร้างข้อมูลไฟล์สำหรับ response
+    const files = req.files.map(file => ({
+      filename: file.key, // S3 key
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      url: file.location, // URL จาก S3
+      s3Key: file.key,
+      bucket: file.bucket
+    }));
     
     res.status(201).json({
       success: true,
@@ -160,9 +101,95 @@ const uploadMultipleFiles = (req, res) => {
       files
     });
   });
-};
+});
+
+// @desc    อัปโหลดไฟล์วิดีโอไปยัง S3
+// @route   POST /api/upload/video
+// @access  Private/Admin
+const uploadVideo = asyncHandler(async (req, res) => {
+  uploaders.videoUpload.single('video')(req, res, function(error) {
+    if (error) {
+      if (error.message && error.message.includes('File too large')) {
+        return res.status(400).json({
+          success: false,
+          message: 'ไฟล์วิดีโอมีขนาดใหญ่เกินไป (สูงสุด 100MB)'
+        });
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'เกิดข้อผิดพลาดในการอัปโหลดวิดีโอ'
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณาเลือกไฟล์วิดีโอที่ต้องการอัปโหลด'
+      });
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'อัปโหลดวิดีโอสำเร็จ',
+      file: {
+        filename: req.file.key,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        url: req.file.location,
+        s3Key: req.file.key,
+        bucket: req.file.bucket
+      }
+    });
+  });
+});
+
+// @desc    อัปโหลดไฟล์เพลงไปยัง S3
+// @route   POST /api/upload/music
+// @access  Private/Admin
+const uploadMusic = asyncHandler(async (req, res) => {
+  uploaders.musicUpload.single('audio')(req, res, function(error) {
+    if (error) {
+      if (error.message && error.message.includes('File too large')) {
+        return res.status(400).json({
+          success: false,
+          message: 'ไฟล์เพลงมีขนาดใหญ่เกินไป (สูงสุด 20MB)'
+        });
+      }
+      
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'เกิดข้อผิดพลาดในการอัปโหลดเพลง'
+      });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'กรุณาเลือกไฟล์เพลงที่ต้องการอัปโหลด'
+      });
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'อัปโหลดเพลงสำเร็จ',
+      file: {
+        filename: req.file.key,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        url: req.file.location,
+        s3Key: req.file.key,
+        bucket: req.file.bucket
+      }
+    });
+  });
+});
 
 module.exports = {
   uploadFile,
-  uploadMultipleFiles
+  uploadMultipleFiles,
+  uploadVideo,
+  uploadMusic
 };

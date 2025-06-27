@@ -15,6 +15,10 @@ const CardSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please upload card image']
   },
+  imageS3Key: {
+    type: String,
+    default: null
+  },
   order: {
     type: Number,
     default: 0

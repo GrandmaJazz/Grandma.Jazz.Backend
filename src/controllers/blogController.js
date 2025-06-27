@@ -3,6 +3,8 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, bucketName } = require('../config/awsS3');
 
 // @desc    ดึงบล็อกทั้งหมด (สำหรับ public)
 // @route   GET /api/blogs
@@ -136,7 +138,8 @@ const createBlog = asyncHandler(async (req, res) => {
   if (req.files && req.files.length > 0) {
     req.files.forEach((file, index) => {
       images.push({
-        path: `/uploads/blogs/${file.filename}`,
+        path: file.location, // S3 URL
+        s3Key: file.key, // S3 key for deletion
         caption: req.body[`imageCaption_${index}`] || ''
       });
     });
@@ -180,7 +183,8 @@ const updateBlog = asyncHandler(async (req, res) => {
   if (req.files && req.files.length > 0) {
     req.files.forEach((file, index) => {
       newImages.push({
-        path: `/uploads/blogs/${file.filename}`,
+        path: file.location, // S3 URL
+        s3Key: file.key, // S3 key for deletion
         caption: req.body[`imageCaption_${index}`] || ''
       });
     });
@@ -232,17 +236,20 @@ const deleteBlog = asyncHandler(async (req, res) => {
     throw new Error('Blog not found');
   }
   
-  // ลบรูปภาพทั้งหมด
-  blog.images.forEach(image => {
-    const imagePath = path.join(__dirname, '..', '..', image.path);
-    if (fs.existsSync(imagePath)) {
+  // ลบรูปภาพทั้งหมดจาก S3
+  for (const image of blog.images) {
+    if (image.s3Key) {
       try {
-        fs.unlinkSync(imagePath);
+        const deleteParams = {
+          Bucket: bucketName,
+          Key: image.s3Key
+        };
+        await s3Client.send(new DeleteObjectCommand(deleteParams));
       } catch (error) {
-        console.error('Error deleting image:', error);
+        console.error('Error deleting image from S3:', error);
       }
     }
-  });
+  }
   
   await Blog.findByIdAndDelete(req.params.id);
   
@@ -270,10 +277,18 @@ const deleteImageFromBlog = asyncHandler(async (req, res) => {
     throw new Error('Image not found');
   }
   
-  // ลบไฟล์รูปภาพ
-  const imagePath = path.join(__dirname, '..', '..', blog.images[imageIndex].path);
-  if (fs.existsSync(imagePath)) {
-    fs.unlinkSync(imagePath);
+  // ลบไฟล์รูปภาพจาก S3
+  const image = blog.images[imageIndex];
+  if (image.s3Key) {
+    try {
+      const deleteParams = {
+        Bucket: bucketName,
+        Key: image.s3Key
+      };
+      await s3Client.send(new DeleteObjectCommand(deleteParams));
+    } catch (error) {
+      console.error('Error deleting image from S3:', error);
+    }
   }
   
   // ลบรูปภาพจาก array

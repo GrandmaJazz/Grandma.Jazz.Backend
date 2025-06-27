@@ -4,6 +4,8 @@ const asyncHandler = require('express-async-handler');
 const fs = require('fs');
 const path = require('path');
 const mm = require('music-metadata');
+const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, bucketName } = require('../config/awsS3');
 
 // @desc    ดึงข้อมูลการ์ดทั้งหมดสำหรับแอดมิน
 // @route   GET /api/cards/admin/all
@@ -76,7 +78,8 @@ const createCard = asyncHandler(async (req, res) => {
   
   // หาไฟล์รูปภาพ - อาจมาจาก req.file หรือ req.files.image
   const imageFile = req.file || req.files.image[0];
-  const imagePath = `/uploads/cards/${imageFile.filename}`;
+  const imagePath = imageFile.location; // S3 URL
+  const imageS3Key = imageFile.key; // S3 key for deletion
   
   // กำหนดชื่อที่มีความหมายมากขึ้น เช่น ใช้วันที่สร้าง
   const defaultTitle = `Music Card ${new Date().toLocaleDateString('en-US', {
@@ -90,6 +93,7 @@ const createCard = asyncHandler(async (req, res) => {
     title: req.body.title || defaultTitle,
     description: req.body.description || '',
     imagePath,
+    imageS3Key,
     order: req.body.order || 0,
     isActive: req.body.isActive === 'false' ? false : true
   });
@@ -100,26 +104,15 @@ const createCard = asyncHandler(async (req, res) => {
     const musicFiles = Array.isArray(req.files.music) ? req.files.music : [req.files.music];
     
     for (const file of musicFiles) {
-      const filePath = `/uploads/music/${file.filename}`;
-      
       // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
       const fileName = file.originalname.split('.').slice(0, -1).join('.');
-      
-      // อ่านข้อมูล metadata จากไฟล์เพลง
-      let duration = 0;
-      try {
-        const fullPath = path.join(__dirname, '..', '..', filePath);
-        const metadata = await mm.parseFile(fullPath);
-        duration = metadata.format.duration || 0;
-      } catch (error) {
-        console.error('Error parsing music metadata:', error);
-      }
       
       // สร้างเพลง
       const music = await Music.create({
         title: fileName,
-        filePath,
-        duration,
+        filePath: file.location, // S3 URL
+        fileS3Key: file.key, // S3 key
+        duration: 0, // จะต้องหาวิธีดึง duration จาก S3 file
         cards: [card._id]
       });
       
@@ -176,15 +169,21 @@ const updateCard = asyncHandler(async (req, res) => {
     // หาไฟล์รูปภาพ - อาจมาจาก req.file หรือ req.files.image
     const imageFile = req.file || req.files.image[0];
     
-    // ลบรูปภาพเก่า (ถ้ามี)
-    if (card.imagePath) {
-      const oldImagePath = path.join(__dirname, '..', '..', card.imagePath);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
+    // ลบรูปภาพเก่าจาก S3 (ถ้ามี)
+    if (card.imageS3Key) {
+      try {
+        const deleteParams = {
+          Bucket: bucketName,
+          Key: card.imageS3Key
+        };
+        await s3Client.send(new DeleteObjectCommand(deleteParams));
+      } catch (error) {
+        console.error('Error deleting old image from S3:', error);
       }
     }
     
-    updateData.imagePath = `/uploads/cards/${imageFile.filename}`;
+    updateData.imagePath = imageFile.location; // S3 URL
+    updateData.imageS3Key = imageFile.key; // S3 key
   }
   
   card = await Card.findByIdAndUpdate(req.params.id, updateData, {
@@ -198,26 +197,15 @@ const updateCard = asyncHandler(async (req, res) => {
     const musicFiles = Array.isArray(req.files.music) ? req.files.music : [req.files.music];
     
     for (const file of musicFiles) {
-      const filePath = `/uploads/music/${file.filename}`;
-      
       // ใช้ชื่อไฟล์เป็นชื่อเพลง (ตัด extension ออก)
       const fileName = file.originalname.split('.').slice(0, -1).join('.');
-      
-      // อ่านข้อมูล metadata จากไฟล์เพลง
-      let duration = 0;
-      try {
-        const fullPath = path.join(__dirname, '..', '..', filePath);
-        const metadata = await mm.parseFile(fullPath);
-        duration = metadata.format.duration || 0;
-      } catch (error) {
-        console.error('Error parsing music metadata:', error);
-      }
       
       // สร้างเพลง
       const music = await Music.create({
         title: fileName,
-        filePath,
-        duration,
+        filePath: file.location, // S3 URL
+        fileS3Key: file.key, // S3 key
+        duration: 0,
         cards: [card._id]
       });
       
@@ -248,15 +236,16 @@ const deleteCard = asyncHandler(async (req, res) => {
     throw new Error('Card not found');
   }
   
-  // ลบรูปภาพ
-  if (card.imagePath) {
+  // ลบรูปภาพจาก S3
+  if (card.imageS3Key) {
     try {
-      const imagePath = path.join(__dirname, '..', '..', card.imagePath);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+      const deleteParams = {
+        Bucket: bucketName,
+        Key: card.imageS3Key
+      };
+      await s3Client.send(new DeleteObjectCommand(deleteParams));
     } catch (error) {
-      console.error('Error deleting image file:', error);
+      console.error('Error deleting image file from S3:', error);
       // ยังคงดำเนินการต่อไปแม้ลบไฟล์ไม่สำเร็จ
     }
   }

@@ -3,14 +3,22 @@ const express = require('express');
 const router = express.Router();
 const {
   uploadFile,
-  uploadMultipleFiles
+  uploadMultipleFiles,
+  uploadVideo,
+  uploadMusic
 } = require('../controllers/uploadController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
-// Route สำหรับอัปโหลดไฟล์เดียว
+// Route สำหรับอัปโหลดรูปภาพเดียว
 router.post('/', protect, admin, uploadFile);
 
-// Route สำหรับอัปโหลดหลายไฟล์
+// Route สำหรับอัปโหลดหลายรูปภาพ
 router.post('/multiple', protect, admin, uploadMultipleFiles);
+
+// Route สำหรับอัปโหลดวิดีโอ
+router.post('/video', protect, admin, uploadVideo);
+
+// Route สำหรับอัปโหลดเพลง
+router.post('/music', protect, admin, uploadMusic);
 
 module.exports = router;

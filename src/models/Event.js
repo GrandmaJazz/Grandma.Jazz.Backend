@@ -39,6 +39,10 @@ const eventSchema = new mongoose.Schema({
     type: String,
     default: '/videos/event-background.webm'
   },
+  videoS3Key: {
+    type: String,
+    default: null
+  },
   isActive: {
     type: Boolean,
     default: true
