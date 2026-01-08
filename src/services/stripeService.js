@@ -14,10 +14,11 @@ if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSe
 const stripe = require('stripe')(stripeSecretKey);
 const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
+const Discount = require('../models/Discount');
 const { ORDER_STATUS } = require('../config/constants');
 
 // สร้าง checkout session สำหรับ Order (เดิม)
-const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost) => {
+const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
   try {
     // ตรวจสอบอีกครั้งก่อนใช้งาน
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
@@ -55,11 +56,27 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       });
     }
 
-    // คำนวณยอดรวม (รวมค่าส่ง) - totalAmount ยังเป็น USD
-    const totalAmount = orderItems.reduce(
+    // เพิ่มส่วนลดเป็น line item (ถ้ามี) - ใช้จำนวนติดลบ
+    if (discountAmount > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `Discount${discountCode ? ` (${discountCode})` : ''}`,
+            description: 'Discount applied'
+          },
+          unit_amount: -Math.round(discountAmount * 100) // จำนวนติดลบสำหรับส่วนลด
+        },
+        quantity: 1
+      });
+    }
+
+    // คำนวณยอดรวม (รวมค่าส่ง ลบส่วนลด) - totalAmount ยังเป็น USD
+    const subtotal = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
-    ) + shippingCost;
+    );
+    const totalAmount = subtotal + shippingCost - discountAmount;
 
     // สร้างคำสั่งซื้อในฐานข้อมูลของเรา
     const order = await Order.create({
@@ -69,6 +86,8 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       contactPhone,
       destinationCountry,
       shippingCost,
+      discountCode,
+      discountAmount,
       totalAmount,
       status: ORDER_STATUS.PENDING
     });
@@ -205,6 +224,17 @@ const verifyPayment = async (sessionId) => {
         order.paymentId = session.payment_intent;
         
         await order.save();
+        
+        // บันทึกการใช้งานส่วนลด (ถ้ามี)
+        if (order.discountCode) {
+          const discount = await Discount.findOne({ code: order.discountCode });
+          if (discount && !discount.hasUserUsed(order.user.toString())) {
+            discount.usedBy.push(order.user);
+            await discount.save();
+            console.log(`Discount ${order.discountCode} usage recorded for user ${order.user}`);
+          }
+        }
+        
         console.log(`Order ${orderId} marked as paid`);
         
         return { success: true, order };
@@ -301,6 +331,17 @@ const handleWebhook = async (payload, signature) => {
             order.paymentId = session.payment_intent;
             
             await order.save();
+            
+            // บันทึกการใช้งานส่วนลด (ถ้ามี)
+            if (order.discountCode) {
+              const discount = await Discount.findOne({ code: order.discountCode });
+              if (discount && !discount.hasUserUsed(order.user.toString())) {
+                discount.usedBy.push(order.user);
+                await discount.save();
+                console.log(`Webhook: Discount ${order.discountCode} usage recorded for user ${order.user}`);
+              }
+            }
+            
             console.log(`Webhook: Order ${orderId} marked as paid`);
           }
         }

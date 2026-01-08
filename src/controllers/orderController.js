@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
+const Discount = require('../models/Discount');
 const { createCheckoutSession, verifyPayment } = require('../services/stripeService');
 const { ORDER_STATUS } = require('../config/constants');
 
@@ -10,7 +11,7 @@ const { ORDER_STATUS } = require('../config/constants');
 // @route   POST /api/orders
 // @access  Private
 const createOrder = asyncHandler(async (req, res) => {
-  const { orderItems, shippingAddress, destinationCountry, shippingCost } = req.body;
+  const { orderItems, shippingAddress, destinationCountry, shippingCost, discountCode } = req.body;
   
   // ตรวจสอบข้อมูลที่จำเป็น
   if (!orderItems || orderItems.length === 0) {
@@ -61,6 +62,46 @@ const createOrder = asyncHandler(async (req, res) => {
     }
   }
   
+  // คำนวณยอดรวมก่อนส่วนลด
+  const subtotal = orderItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+  const totalBeforeDiscount = subtotal + shippingCost;
+  
+  // ตรวจสอบและใช้ส่วนลด (ถ้ามี)
+  let discountAmount = 0;
+  let finalDiscountCode = null;
+  
+  if (discountCode) {
+    const discount = await Discount.findOne({ code: discountCode.toUpperCase() });
+    
+    if (!discount) {
+      res.status(404);
+      throw new Error('ไม่พบรหัสส่วนลด');
+    }
+    
+    // ตรวจสอบความถูกต้องของส่วนลด
+    const validityCheck = discount.isValid();
+    if (!validityCheck.valid) {
+      res.status(400);
+      throw new Error(validityCheck.message);
+    }
+    
+    // ตรวจสอบว่า user ใช้ส่วนลดนี้แล้วหรือยัง
+    if (discount.hasUserUsed(req.user._id)) {
+      res.status(400);
+      throw new Error('คุณได้ใช้รหัสส่วนลดนี้แล้ว (จำกัด 1 ครั้งต่อผู้ใช้)');
+    }
+    
+    // คำนวณส่วนลด
+    const discountResult = discount.applyDiscount(subtotal);
+    discountAmount = discountResult.discountAmount;
+    finalDiscountCode = discount.code;
+    
+    // เพิ่ม user เข้าไปใน usedBy (จะบันทึกเมื่อชำระเงินสำเร็จ)
+  }
+  
   // สร้าง checkout session กับ Stripe
   const { session, order } = await createCheckoutSession(
     orderItems,
@@ -68,7 +109,9 @@ const createOrder = asyncHandler(async (req, res) => {
     shippingAddress,
     user.phone,
     destinationCountry,
-    shippingCost
+    shippingCost,
+    finalDiscountCode,
+    discountAmount
   );
   
   res.status(201).json({

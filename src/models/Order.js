@@ -80,6 +80,15 @@ const orderSchema = mongoose.Schema(
     trackingNumber: {
       type: String,
       default: ''
+    },
+    // เพิ่มฟิลด์ส่วนลด
+    discountCode: {
+      type: String
+    },
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
   {
