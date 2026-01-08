@@ -56,16 +56,16 @@ discountSchema.methods.isValid = function() {
   
   // Check if active
   if (!this.isActive) {
-    return { valid: false, message: 'ส่วนลดนี้ถูกปิดการใช้งาน' };
+    return { valid: false, message: 'This discount is disabled' };
   }
   
   // Check validity period
   if (this.validFrom && now < this.validFrom) {
-    return { valid: false, message: 'ส่วนลดยังไม่สามารถใช้งานได้' };
+    return { valid: false, message: 'This discount is not yet available' };
   }
   
   if (this.validUntil && now > this.validUntil) {
-    return { valid: false, message: 'ส่วนลดหมดอายุแล้ว' };
+    return { valid: false, message: 'This discount has expired' };
   }
   
   return { valid: true };

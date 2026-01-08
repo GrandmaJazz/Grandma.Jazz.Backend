@@ -78,7 +78,7 @@ const createOrder = asyncHandler(async (req, res) => {
     
     if (!discount) {
       res.status(404);
-      throw new Error('ไม่พบรหัสส่วนลด');
+      throw new Error('Discount code not found');
     }
     
     // ตรวจสอบความถูกต้องของส่วนลด
@@ -91,7 +91,7 @@ const createOrder = asyncHandler(async (req, res) => {
     // ตรวจสอบว่า user ใช้ส่วนลดนี้แล้วหรือยัง
     if (discount.hasUserUsed(req.user._id)) {
       res.status(400);
-      throw new Error('คุณได้ใช้รหัสส่วนลดนี้แล้ว (จำกัด 1 ครั้งต่อผู้ใช้)');
+      throw new Error('You have already used this discount code (limited to 1 use per user)');
     }
     
     // คำนวณส่วนลด

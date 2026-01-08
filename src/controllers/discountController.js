@@ -11,19 +11,19 @@ const validateDiscount = asyncHandler(async (req, res) => {
 
   if (!code) {
     res.status(400);
-    throw new Error('กรุณาระบุรหัสส่วนลด');
+    throw new Error('Please provide a discount code');
   }
 
   if (totalAmount === undefined || totalAmount < 0) {
     res.status(400);
-    throw new Error('ยอดรวมไม่ถูกต้อง');
+    throw new Error('Invalid total amount');
   }
 
   const discount = await Discount.findOne({ code: code.toUpperCase() });
 
   if (!discount) {
     res.status(404);
-    throw new Error('ไม่พบรหัสส่วนลด');
+    throw new Error('Discount code not found');
   }
 
   // Check if discount is valid
@@ -36,7 +36,7 @@ const validateDiscount = asyncHandler(async (req, res) => {
   // Check if user has already used this discount
   if (discount.hasUserUsed(userId)) {
     res.status(400);
-    throw new Error('คุณได้ใช้รหัสส่วนลดนี้แล้ว (จำกัด 1 ครั้งต่อผู้ใช้)');
+    throw new Error('You have already used this discount code (limited to 1 use per user)');
   }
 
   // Apply discount
@@ -78,7 +78,7 @@ const getDiscountById = asyncHandler(async (req, res) => {
 
   if (!discount) {
     res.status(404);
-    throw new Error('ไม่พบส่วนลด');
+    throw new Error('Discount not found');
   }
 
   res.json({
@@ -95,29 +95,29 @@ const createDiscount = asyncHandler(async (req, res) => {
 
   if (!code || !discountType || value === undefined) {
     res.status(400);
-    throw new Error('กรุณากรอกข้อมูลให้ครบถ้วน (code, discountType, value)');
+    throw new Error('Please provide all required fields (code, discountType, value)');
   }
 
   if (!['percentage', 'fixed'].includes(discountType)) {
     res.status(400);
-    throw new Error('ประเภทส่วนลดไม่ถูกต้อง (ต้องเป็น percentage หรือ fixed)');
+    throw new Error('Invalid discount type (must be percentage or fixed)');
   }
 
   if (value < 0) {
     res.status(400);
-    throw new Error('ค่าส่วนลดต้องมากกว่าหรือเท่ากับ 0');
+    throw new Error('Discount value must be greater than or equal to 0');
   }
 
   if (discountType === 'percentage' && value > 100) {
     res.status(400);
-    throw new Error('ส่วนลดแบบเปอร์เซ็นต์ต้องไม่เกิน 100%');
+    throw new Error('Percentage discount must not exceed 100%');
   }
 
   // Check if code already exists
   const existingDiscount = await Discount.findOne({ code: code.toUpperCase() });
   if (existingDiscount) {
     res.status(400);
-    throw new Error('รหัสส่วนลดนี้มีอยู่แล้ว');
+    throw new Error('This discount code already exists');
   }
 
   const discount = await Discount.create({
@@ -146,24 +146,24 @@ const updateDiscount = asyncHandler(async (req, res) => {
 
   if (!discount) {
     res.status(404);
-    throw new Error('ไม่พบส่วนลด');
+    throw new Error('Discount not found');
   }
 
   // Validate discount type if provided
   if (discountType && !['percentage', 'fixed'].includes(discountType)) {
     res.status(400);
-    throw new Error('ประเภทส่วนลดไม่ถูกต้อง');
+    throw new Error('Invalid discount type');
   }
 
   // Validate value if provided
   if (value !== undefined) {
     if (value < 0) {
       res.status(400);
-      throw new Error('ค่าส่วนลดต้องมากกว่าหรือเท่ากับ 0');
+      throw new Error('Discount value must be greater than or equal to 0');
     }
     if (discountType === 'percentage' && value > 100) {
       res.status(400);
-      throw new Error('ส่วนลดแบบเปอร์เซ็นต์ต้องไม่เกิน 100%');
+      throw new Error('Percentage discount must not exceed 100%');
     }
   }
 
@@ -172,7 +172,7 @@ const updateDiscount = asyncHandler(async (req, res) => {
     const existingDiscount = await Discount.findOne({ code: code.toUpperCase() });
     if (existingDiscount) {
       res.status(400);
-      throw new Error('รหัสส่วนลดนี้มีอยู่แล้ว');
+      throw new Error('This discount code already exists');
     }
     discount.code = code.toUpperCase();
   }
@@ -200,14 +200,14 @@ const deleteDiscount = asyncHandler(async (req, res) => {
 
   if (!discount) {
     res.status(404);
-    throw new Error('ไม่พบส่วนลด');
+    throw new Error('Discount not found');
   }
 
   await discount.deleteOne();
 
   res.json({
     success: true,
-    message: 'ลบส่วนลดเรียบร้อยแล้ว'
+    message: 'Discount deleted successfully'
   });
 });
 
@@ -219,7 +219,7 @@ const toggleDiscount = asyncHandler(async (req, res) => {
 
   if (!discount) {
     res.status(404);
-    throw new Error('ไม่พบส่วนลด');
+    throw new Error('Discount not found');
   }
 
   discount.isActive = !discount.isActive;
