@@ -1,9 +1,8 @@
-// backend/src/services/stripeService.js
-require('dotenv').config(); // ตรวจสอบให้แน่ใจว่าได้โหลด .env
+
+require('dotenv').config(); 
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-// ตรวจสอบค่า API key
 if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
   console.error('ERROR: Stripe Secret Key ไม่ถูกกำหนดหรือไม่ถูกต้อง!');
   console.error('กรุณาตรวจสอบไฟล์ .env และตั้งค่า STRIPE_SECRET_KEY ให้ถูกต้อง');
@@ -18,15 +17,14 @@ const Discount = require('../models/Discount');
 const { ORDER_STATUS } = require('../config/constants');
 const { sendOrderNotificationToAdmins } = require('./emailService');
 
-// สร้าง checkout session สำหรับ Order (เดิม)
+
 const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
   try {
-    // ตรวจสอบอีกครั้งก่อนใช้งาน
+
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
       throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
     }
 
-    // แปลงรายการสินค้าให้อยู่ในรูปแบบที่ Stripe ต้องการ
     const lineItems = orderItems.map(item => {
       return {
         price_data: {
@@ -36,13 +34,13 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
             images: [item.image],
             description: `จำนวน: ${item.quantity}`
           },
-          unit_amount: Math.round(item.price * 100) // แปลงเป็นเซ็นต์ (Stripe ใช้หน่วยเล็กสุดของสกุลเงิน)
+          unit_amount: Math.round(item.price * 100) 
         },
         quantity: item.quantity
       };
     });
 
-    // เพิ่ม shipping เป็น line item
+
     if (shippingCost > 0) {
       lineItems.push({
         price_data: {
@@ -51,20 +49,20 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
             name: `Shipping to ${destinationCountry}`,
             description: destinationCountry === 'Thailand' ? 'Domestic Shipping' : 'EMS World Merchandise'
           },
-          unit_amount: Math.round(shippingCost * 100) // USD เป็นเซ็นต์
+          unit_amount: Math.round(shippingCost * 100) 
         },
         quantity: 1
       });
     }
 
-    // คำนวณยอดรวม (รวมค่าส่ง ลบส่วนลด) - totalAmount ยังเป็น USD
+
     const subtotal = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
     const totalAmount = subtotal + shippingCost - discountAmount;
 
-    // สร้างคำสั่งซื้อในฐานข้อมูลของเรา
+
     const order = await Order.create({
       user: userId,
       orderItems,
@@ -78,13 +76,11 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       status: ORDER_STATUS.PENDING
     });
 
-    // เตรียม URLs สำหรับ redirect
     const successUrl = `${process.env.CLIENT_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${process.env.CLIENT_URL}/checkout/cancel`;
     
     console.log('Creating Stripe checkout session with URLs:', { successUrl, cancelUrl });
 
-    // สร้าง session config
     const sessionConfig = {
       payment_method_types: ['card'],
       line_items: lineItems,
@@ -93,32 +89,25 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       cancel_url: cancelUrl,
       metadata: {
         orderId: order._id.toString(),
-        type: 'order' // identifier สำหรับ webhook
+        type: 'order' 
       }
     };
 
-    // ถ้ามีส่วนลด ให้สร้าง coupon ใน Stripe และใช้ discounts parameter
     if (discountCode && discountAmount > 0) {
       sessionConfig.metadata.discountCode = discountCode;
       sessionConfig.metadata.discountAmount = discountAmount.toString();
       
       try {
-        // สร้าง coupon ใน Stripe แบบ dynamic
-        // ใช้ fixed amount เพราะส่วนลดคำนวณจากราคาสินค้าเท่านั้น (ไม่รวม shipping)
-        // แต่ Stripe coupon percentage จะคำนวณจาก subtotal ทั้งหมด (รวม shipping) ซึ่งไม่ถูกต้อง
         const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
         
-        // สร้าง coupon แบบ fixed amount (ในหน่วยเซ็นต์)
-        // ใช้ fixed amount เพื่อให้ส่วนลดถูกต้องตามที่คำนวณไว้
         const coupon = await stripe.coupons.create({
           id: couponId,
-          amount_off: Math.round(discountAmount * 100), // แปลงเป็นเซ็นต์
+          amount_off: Math.round(discountAmount * 100), 
           currency: 'usd',
           duration: 'once',
           name: `Discount: ${discountCode}`
         });
         
-        // เพิ่ม discounts parameter ใน session config
         sessionConfig.discounts = [{
           coupon: coupon.id
         }];
@@ -126,7 +115,6 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
         console.log(`Stripe coupon created for discount ${discountCode}: ${coupon.id}, amount: $${discountAmount}`);
       } catch (couponError) {
         console.error('Error creating Stripe coupon:', couponError);
-        // ถ้าสร้าง coupon ไม่ได้ (เช่น coupon ID ซ้ำ) ให้ลองสร้างใหม่โดยไม่ระบุ ID
         try {
           const coupon = await stripe.coupons.create({
             amount_off: Math.round(discountAmount * 100),
@@ -142,19 +130,16 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
           console.log(`Stripe coupon created (auto ID) for discount ${discountCode}: ${coupon.id}`);
         } catch (retryError) {
           console.error('Error creating Stripe coupon (retry):', retryError);
-          // ถ้าสร้าง coupon ไม่ได้ ให้ข้ามไป (ยังคงส่ง metadata ไว้)
         }
       }
     }
 
-    // สร้าง session สำหรับการชำระเงิน
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
     console.log('Stripe checkout session created successfully:', session.id);
     return { session, order };
   } catch (error) {
     console.error('Stripe checkout error:', error);
-    // บันทึกรายละเอียดข้อผิดพลาดมากขึ้น
     if (error.type) {
       console.error('Stripe error type:', error.type);
     }
@@ -165,15 +150,12 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
   }
 };
 
-// สร้าง checkout session สำหรับ Ticket (ใหม่)
 const createTicketCheckoutSession = async (ticketId, userId) => {
   try {
-    // ตรวจสอบ API key
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
       throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
     }
 
-    // ดึงข้อมูล ticket พร้อม event details
     const ticket = await Ticket.findById(ticketId)
       .populate('event', 'title eventDate ticketPrice')
       .populate('user', 'name email phone');
@@ -182,7 +164,6 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
       throw new Error('ไม่พบตั๋วหรือไม่มีสิทธิ์เข้าถึง');
     }
 
-    // Check if event date has passed
     const now = new Date();
     const eventDate = new Date(ticket.event.eventDate);
     if (eventDate < now) {
@@ -197,27 +178,24 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
       throw new Error('ตั๋วนี้ถูกยกเลิกแล้ว');
     }
 
-    // สร้าง line items สำหรับ Stripe
     const lineItems = [{
       price_data: {
         currency: 'usd',
         product_data: {
           name: `${ticket.event.title} - Concert Tickets`,
           description: `${ticket.quantity} ticket(s) for ${ticket.event.title}`,
-          images: [`${process.env.CLIENT_URL}/images/concert-ticket.jpg`] // placeholder image
+          images: [`${process.env.CLIENT_URL}/images/concert-ticket.jpg`] 
         },
-        unit_amount: Math.round(ticket.event.ticketPrice * 100) // แปลงเป็นเซ็นต์
+        unit_amount: Math.round(ticket.event.ticketPrice * 100) 
       },
       quantity: ticket.quantity
     }];
 
-    // เตรียม URLs สำหรับ redirect
     const successUrl = `${process.env.CLIENT_URL}/ticket-checkout/success?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${process.env.CLIENT_URL}/ticket-checkout/cancel?ticketId=${ticketId}`;
     
     console.log('Creating Stripe ticket checkout session with URLs:', { successUrl, cancelUrl });
 
-    // สร้าง session สำหรับการชำระเงิน
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: lineItems,
@@ -227,7 +205,7 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
       customer_email: ticket.user.email,
       metadata: {
         ticketId: ticket._id.toString(),
-        type: 'ticket' // identifier สำหรับ webhook
+        type: 'ticket' 
       }
     });
 
@@ -239,10 +217,8 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
   }
 };
 
-// ตรวจสอบสถานะการชำระเงินสำหรับ Order (เดิม)
 const verifyPayment = async (sessionId) => {
   try {
-    // ตรวจสอบอีกครั้งก่อนใช้งาน
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
       throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
     }
@@ -253,7 +229,6 @@ const verifyPayment = async (sessionId) => {
     if (session.payment_status === 'paid') {
       const orderId = session.metadata.orderId;
       
-      // อัปเดตสถานะคำสั่งซื้อในฐานข้อมูลของเรา
       const order = await Order.findById(orderId);
       
       if (order) {
@@ -264,7 +239,6 @@ const verifyPayment = async (sessionId) => {
         
         await order.save();
         
-        // บันทึกการใช้งานส่วนลด (ถ้ามี)
         if (order.discountCode) {
           const discount = await Discount.findOne({ code: order.discountCode });
           if (discount && !discount.hasUserUsed(order.user.toString())) {
@@ -276,7 +250,6 @@ const verifyPayment = async (sessionId) => {
         
         console.log(`Order ${orderId} marked as paid`);
         
-        // ส่งอีเมลแจ้งเตือนไปยังแอดมิน
         await sendOrderNotificationToAdmins(order);
         
         return { success: true, order };
@@ -290,10 +263,8 @@ const verifyPayment = async (sessionId) => {
   }
 };
 
-// ตรวจสอบสถานะการชำระเงินสำหรับ Ticket (ใหม่)
 const verifyTicketPayment = async (sessionId) => {
   try {
-    // ตรวจสอบ API key
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
       throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
     }
@@ -304,7 +275,6 @@ const verifyTicketPayment = async (sessionId) => {
     if (session.payment_status === 'paid' && session.metadata.type === 'ticket') {
       const ticketId = session.metadata.ticketId;
       
-      // อัปเดตสถานะ ticket ในฐานข้อมูล
       const ticket = await Ticket.findById(ticketId)
         .populate('event', 'title eventDate ticketPrice');
       
@@ -326,10 +296,8 @@ const verifyTicketPayment = async (sessionId) => {
   }
 };
 
-// จัดการ webhook จาก Stripe (อัปเดต - รองรับทั้ง Order และ Ticket)
 const handleWebhook = async (payload, signature) => {
   try {
-    // ตรวจสอบค่า webhook secret
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret || webhookSecret === 'your_stripe_webhook_secret') {
       console.warn('คำเตือน: STRIPE_WEBHOOK_SECRET ไม่ถูกกำหนดหรือเป็นค่าเริ่มต้น');
@@ -346,11 +314,8 @@ const handleWebhook = async (payload, signature) => {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       
-      // ตรวจสอบว่าการชำระเงินสำเร็จ
       if (session.payment_status === 'paid') {
-        // ตรวจสอบว่าเป็น ticket หรือ order
         if (session.metadata.type === 'ticket') {
-          // จัดการ ticket payment
           const ticketId = session.metadata.ticketId;
           
           const ticket = await Ticket.findById(ticketId);
@@ -362,7 +327,6 @@ const handleWebhook = async (payload, signature) => {
             console.log(`Webhook: Ticket ${ticketId} marked as paid`);
           }
         } else {
-          // จัดการ order payment (เดิม)
           const orderId = session.metadata.orderId;
           
           const order = await Order.findById(orderId);
@@ -374,7 +338,6 @@ const handleWebhook = async (payload, signature) => {
             
             await order.save();
             
-            // บันทึกการใช้งานส่วนลด (ถ้ามี)
             if (order.discountCode) {
               const discount = await Discount.findOne({ code: order.discountCode });
               if (discount && !discount.hasUserUsed(order.user.toString())) {
@@ -386,7 +349,6 @@ const handleWebhook = async (payload, signature) => {
             
             console.log(`Webhook: Order ${orderId} marked as paid`);
             
-            // ส่งอีเมลแจ้งเตือนไปยังแอดมิน
             await sendOrderNotificationToAdmins(order);
           }
         }
@@ -404,6 +366,6 @@ module.exports = {
   createCheckoutSession, 
   verifyPayment, 
   handleWebhook,
-  createTicketCheckoutSession, // เพิ่มใหม่
-  verifyTicketPayment // เพิ่มใหม่
+  createTicketCheckoutSession, 
+  verifyTicketPayment 
 };

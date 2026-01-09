@@ -2,31 +2,26 @@
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 
-// สร้าง transporter สำหรับส่งอีเมล
-// ใช้ Gmail SMTP (หรือเปลี่ยนเป็น SMTP อื่นตามต้องการ)
+
 const createTransporter = () => {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
-      user: process.env.EMAIL_USER, // อีเมลที่ใช้ส่ง
-      pass: process.env.EMAIL_APP_PASSWORD // App Password จาก Gmail
+      user: process.env.EMAIL_USER, 
+      pass: process.env.EMAIL_APP_PASSWORD 
     }
   });
 };
 
-// ส่งอีเมลแจ้งเตือนไปยังแอดมินเมื่อมีคำสั่งซื้อใหม่
 const sendOrderNotificationToAdmins = async (order) => {
   try {
-    // ตรวจสอบว่ามีการตั้งค่า email หรือไม่
     if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
       console.log('ไม่มีการตั้งค่า EMAIL_USER หรือ EMAIL_APP_PASSWORD ข้ามการส่งอีเมล');
       return;
     }
     
-    // ดึงข้อมูล order พร้อม user details
     const orderWithUser = await order.populate('user', 'name email phone');
     
-    // หาแอดมินทั้งหมด (เช็คจากฐานข้อมูล)
     const admins = await User.find({ isAdmin: true });
     
     if (admins.length === 0) {
@@ -36,7 +31,6 @@ const sendOrderNotificationToAdmins = async (order) => {
     
     const transporter = createTransporter();
     
-    // สร้างเนื้อหาอีเมล
     const orderItemsList = order.orderItems
       .map(item => `  - ${item.name} x${item.quantity} ($${item.price.toFixed(2)} each)`)
       .join('\n');
@@ -65,14 +59,12 @@ ${order.discountCode ? `ส่วนลด: ${order.discountCode} (-$${order.dis
 ${order.isPaid ? `วันที่ชำระเงิน: ${new Date(order.paidAt).toLocaleString('th-TH')}` : 'ยังไม่ได้ชำระเงิน'}
     `.trim();
     
-    // สำหรับการเทส: ส่งไปหาเฉพาะ kraichan.official@gmail.com
-    // แต่ยังคงเช็ค isAdmin: true จากฐานข้อมูลเหมือนเดิม
     const testEmail = 'kraichan.official@gmail.com';
-    const recipientEmail = testEmail; // ใช้ test email สำหรับการเทส
+    const recipientEmail = testEmail; 
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
-      to: recipientEmail, // ส่งไปยัง test email สำหรับการเทส
+      to: recipientEmail, 
       subject: `คำสั่งซื้อใหม่ #${order._id.toString().substring(0, 8)} - ${orderWithUser.user.name || orderWithUser.user.email}`,
       text: emailContent,
       html: `
@@ -119,7 +111,6 @@ ${order.isPaid ? `วันที่ชำระเงิน: ${new Date(order.p
     return info;
   } catch (error) {
     console.error('เกิดข้อผิดพลาดในการส่งอีเมลแจ้งเตือน:', error);
-    // ไม่ throw error เพื่อไม่ให้กระทบการทำงานของระบบหลัก
   }
 };
 
