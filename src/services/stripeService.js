@@ -57,20 +57,8 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       });
     }
 
-    // เพิ่มส่วนลดเป็น line item (ถ้ามี) - ใช้จำนวนติดลบ
-    if (discountAmount > 0) {
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `Discount${discountCode ? ` (${discountCode})` : ''}`,
-            description: 'Discount applied'
-          },
-          unit_amount: -Math.round(discountAmount * 100) // จำนวนติดลบสำหรับส่วนลด
-        },
-        quantity: 1
-      });
-    }
+    // ไม่เพิ่มส่วนลดเป็น line item เพราะ Stripe ไม่รองรับ unit_amount ที่เป็นจำนวนติดลบ
+    // ส่วนลดจะถูกคำนวณใน totalAmount แล้ว และจะแสดงใน metadata
 
     // คำนวณยอดรวม (รวมค่าส่ง ลบส่วนลด) - totalAmount ยังเป็น USD
     const subtotal = orderItems.reduce(
@@ -99,8 +87,8 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
     
     console.log('Creating Stripe checkout session with URLs:', { successUrl, cancelUrl });
 
-    // สร้าง session สำหรับการชำระเงิน
-    const session = await stripe.checkout.sessions.create({
+    // สร้าง session config
+    const sessionConfig = {
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
@@ -110,7 +98,16 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
         orderId: order._id.toString(),
         type: 'order' // identifier สำหรับ webhook
       }
-    });
+    };
+
+    // ถ้ามีส่วนลด ให้เพิ่มข้อมูลส่วนลดใน metadata
+    if (discountCode && discountAmount > 0) {
+      sessionConfig.metadata.discountCode = discountCode;
+      sessionConfig.metadata.discountAmount = discountAmount.toString();
+    }
+
+    // สร้าง session สำหรับการชำระเงิน
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     console.log('Stripe checkout session created successfully:', session.id);
     return { session, order };
