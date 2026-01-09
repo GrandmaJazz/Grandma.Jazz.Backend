@@ -16,6 +16,7 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Discount = require('../models/Discount');
 const { ORDER_STATUS } = require('../config/constants');
+const { sendOrderNotificationToAdmins } = require('./emailService');
 
 // สร้าง checkout session สำหรับ Order (เดิม)
 const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
@@ -237,6 +238,9 @@ const verifyPayment = async (sessionId) => {
         
         console.log(`Order ${orderId} marked as paid`);
         
+        // ส่งอีเมลแจ้งเตือนไปยังแอดมิน
+        await sendOrderNotificationToAdmins(order);
+        
         return { success: true, order };
       }
     }
@@ -343,6 +347,9 @@ const handleWebhook = async (payload, signature) => {
             }
             
             console.log(`Webhook: Order ${orderId} marked as paid`);
+            
+            // ส่งอีเมลแจ้งเตือนไปยังแอดมิน
+            await sendOrderNotificationToAdmins(order);
           }
         }
       }

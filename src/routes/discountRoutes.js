@@ -29,3 +29,5 @@ router.put('/:id/toggle', protect, admin, toggleDiscount);
 
 module.exports = router;
 
+
+
