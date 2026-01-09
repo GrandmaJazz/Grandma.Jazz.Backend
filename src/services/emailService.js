@@ -26,7 +26,7 @@ const sendOrderNotificationToAdmins = async (order) => {
     // ดึงข้อมูล order พร้อม user details
     const orderWithUser = await order.populate('user', 'name email phone');
     
-    // หาแอดมินทั้งหมด
+    // หาแอดมินทั้งหมด (เช็คจากฐานข้อมูล)
     const admins = await User.find({ isAdmin: true });
     
     if (admins.length === 0) {
@@ -65,12 +65,14 @@ ${order.discountCode ? `ส่วนลด: ${order.discountCode} (-$${order.dis
 ${order.isPaid ? `วันที่ชำระเงิน: ${new Date(order.paidAt).toLocaleString('th-TH')}` : 'ยังไม่ได้ชำระเงิน'}
     `.trim();
     
-    // ส่งอีเมลไปยังแอดมินทุกคน
-    const adminEmails = admins.map(admin => admin.email);
+    // สำหรับการเทส: ส่งไปหาเฉพาะ kraichan.official@gmail.com
+    // แต่ยังคงเช็ค isAdmin: true จากฐานข้อมูลเหมือนเดิม
+    const testEmail = 'kraichan.official@gmail.com';
+    const recipientEmail = testEmail; // ใช้ test email สำหรับการเทส
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
-      to: adminEmails.join(', '), // ส่งไปยังแอดมินทุกคน
+      to: recipientEmail, // ส่งไปยัง test email สำหรับการเทส
       subject: `คำสั่งซื้อใหม่ #${order._id.toString().substring(0, 8)} - ${orderWithUser.user.name || orderWithUser.user.email}`,
       text: emailContent,
       html: `
@@ -112,7 +114,7 @@ ${order.isPaid ? `วันที่ชำระเงิน: ${new Date(order.p
     };
     
     const info = await transporter.sendMail(mailOptions);
-    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยังแอดมินแล้ว: ${info.messageId}`);
+    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยัง ${recipientEmail} แล้ว (โหมดเทส): ${info.messageId}`);
     
     return info;
   } catch (error) {
