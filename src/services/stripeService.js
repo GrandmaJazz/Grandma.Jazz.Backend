@@ -57,9 +57,6 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       });
     }
 
-    // ไม่เพิ่มส่วนลดเป็น line item เพราะ Stripe ไม่รองรับ unit_amount ที่เป็นจำนวนติดลบ
-    // ส่วนลดจะถูกคำนวณใน totalAmount แล้ว และจะแสดงใน metadata
-
     // คำนวณยอดรวม (รวมค่าส่ง ลบส่วนลด) - totalAmount ยังเป็น USD
     const subtotal = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -100,10 +97,54 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       }
     };
 
-    // ถ้ามีส่วนลด ให้เพิ่มข้อมูลส่วนลดใน metadata
+    // ถ้ามีส่วนลด ให้สร้าง coupon ใน Stripe และใช้ discounts parameter
     if (discountCode && discountAmount > 0) {
       sessionConfig.metadata.discountCode = discountCode;
       sessionConfig.metadata.discountAmount = discountAmount.toString();
+      
+      try {
+        // สร้าง coupon ใน Stripe แบบ dynamic
+        // ใช้ fixed amount เพราะส่วนลดคำนวณจากราคาสินค้าเท่านั้น (ไม่รวม shipping)
+        // แต่ Stripe coupon percentage จะคำนวณจาก subtotal ทั้งหมด (รวม shipping) ซึ่งไม่ถูกต้อง
+        const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
+        
+        // สร้าง coupon แบบ fixed amount (ในหน่วยเซ็นต์)
+        // ใช้ fixed amount เพื่อให้ส่วนลดถูกต้องตามที่คำนวณไว้
+        const coupon = await stripe.coupons.create({
+          id: couponId,
+          amount_off: Math.round(discountAmount * 100), // แปลงเป็นเซ็นต์
+          currency: 'usd',
+          duration: 'once',
+          name: `Discount: ${discountCode}`
+        });
+        
+        // เพิ่ม discounts parameter ใน session config
+        sessionConfig.discounts = [{
+          coupon: coupon.id
+        }];
+        
+        console.log(`Stripe coupon created for discount ${discountCode}: ${coupon.id}, amount: $${discountAmount}`);
+      } catch (couponError) {
+        console.error('Error creating Stripe coupon:', couponError);
+        // ถ้าสร้าง coupon ไม่ได้ (เช่น coupon ID ซ้ำ) ให้ลองสร้างใหม่โดยไม่ระบุ ID
+        try {
+          const coupon = await stripe.coupons.create({
+            amount_off: Math.round(discountAmount * 100),
+            currency: 'usd',
+            duration: 'once',
+            name: `Discount: ${discountCode}`
+          });
+          
+          sessionConfig.discounts = [{
+            coupon: coupon.id
+          }];
+          
+          console.log(`Stripe coupon created (auto ID) for discount ${discountCode}: ${coupon.id}`);
+        } catch (retryError) {
+          console.error('Error creating Stripe coupon (retry):', retryError);
+          // ถ้าสร้าง coupon ไม่ได้ ให้ข้ามไป (ยังคงส่ง metadata ไว้)
+        }
+      }
     }
 
     // สร้าง session สำหรับการชำระเงิน
