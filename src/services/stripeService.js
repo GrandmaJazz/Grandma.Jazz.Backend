@@ -138,12 +138,7 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
 
     console.log('Stripe checkout session created successfully:', session.id);
     
-    // ส่งอีเมลแจ้งเตือนไปยังแอดมินทันทีเมื่อมีคำสั่งซื้อใหม่ (สถานะ PENDING)
-    // สำหรับการทดสอบ - ส่งแม้ยังไม่ได้ชำระเงิน
-    await sendOrderNotificationToAdmins(order);
-    
-    // ส่งอีเมลยืนยันไปหาลูกค้า
-    await sendOrderConfirmationToCustomer(order);
+    // ไม่ส่งอีเมลตอนนี้ - จะส่งเมื่อชำระเงินสำเร็จเท่านั้น
     
     return { session, order };
   } catch (error) {

@@ -213,18 +213,19 @@ const sendOrderNotificationToAdmins = async (order) => {
     }
     
     const transporter = createTransporter();
-    const testEmail = 'kraichan.official@gmail.com';
+    // ส่งอีเมลไปยังแอดมินทุกคน
+    const adminEmails = admins.map(admin => admin.email);
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
-      to: testEmail,
+      to: adminEmails.join(', '), // ส่งไปยังแอดมินทุกคน
       subject: `New Order #${order._id.toString()} - ${orderWithUser.user.name || orderWithUser.user.email}`,
       text: createOrderEmailText(order, orderWithUser),
       html: createOrderEmailHTML(order, orderWithUser, false)
     };
     
     const info = await transporter.sendMail(mailOptions);
-    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยัง ${testEmail} แล้ว (โหมดเทส): ${info.messageId}`);
+    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยังแอดมินแล้ว (${adminEmails.length} คน): ${info.messageId}`);
     
     return info;
   } catch (error) {
