@@ -346,8 +346,8 @@ const retryPayment = asyncHandler(async (req, res) => {
   
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   
-  // สร้าง Stripe checkout session
-  const session = await stripe.checkout.sessions.create({
+  // สร้าง session config
+  const sessionConfig = {
     payment_method_types: ['card'],
     line_items: lineItems,
     mode: 'payment',
@@ -357,7 +357,57 @@ const retryPayment = asyncHandler(async (req, res) => {
       orderId: order._id.toString(),
       type: 'order'
     }
-  });
+  };
+
+  // ถ้ามีส่วนลด ให้สร้าง coupon ใน Stripe และใช้ discounts parameter
+  if (order.discountCode && order.discountAmount && order.discountAmount > 0) {
+    sessionConfig.metadata.discountCode = order.discountCode;
+    sessionConfig.metadata.discountAmount = order.discountAmount.toString();
+    
+    try {
+      // สร้าง coupon ใน Stripe แบบ dynamic
+      const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
+      
+      // สร้าง coupon แบบ fixed amount (ในหน่วยเซ็นต์)
+      const coupon = await stripe.coupons.create({
+        id: couponId,
+        amount_off: Math.round(order.discountAmount * 100), // แปลงเป็นเซ็นต์
+        currency: 'usd',
+        duration: 'once',
+        name: `Discount: ${order.discountCode}`
+      });
+      
+      // เพิ่ม discounts parameter ใน session config
+      sessionConfig.discounts = [{
+        coupon: coupon.id
+      }];
+      
+      console.log(`Stripe coupon created for retry payment discount ${order.discountCode}: ${coupon.id}, amount: $${order.discountAmount}`);
+    } catch (couponError) {
+      console.error('Error creating Stripe coupon for retry payment:', couponError);
+      // ถ้าสร้าง coupon ไม่ได้ (เช่น coupon ID ซ้ำ) ให้ลองสร้างใหม่โดยไม่ระบุ ID
+      try {
+        const coupon = await stripe.coupons.create({
+          amount_off: Math.round(order.discountAmount * 100),
+          currency: 'usd',
+          duration: 'once',
+          name: `Discount: ${order.discountCode}`
+        });
+        
+        sessionConfig.discounts = [{
+          coupon: coupon.id
+        }];
+        
+        console.log(`Stripe coupon created (auto ID) for retry payment discount ${order.discountCode}: ${coupon.id}`);
+      } catch (retryError) {
+        console.error('Error creating Stripe coupon (retry):', retryError);
+        // ถ้าสร้าง coupon ไม่ได้ ให้ข้ามไป (ยังคงส่ง metadata ไว้)
+      }
+    }
+  }
+  
+  // สร้าง Stripe checkout session
+  const session = await stripe.checkout.sessions.create(sessionConfig);
   
   res.json({
     success: true,
