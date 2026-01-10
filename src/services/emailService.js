@@ -94,8 +94,8 @@ Country: ${order.destinationCountry}
                   
                   <!-- Header -->
                   <tr>
-                    <td style="background: linear-gradient(135deg, #b88c41 0%, #7c4d33 100%); padding: 30px; text-align: center;">
-                      <h1 style="margin: 0; color: #F5F1E6; font-size: 28px; font-weight: 300; letter-spacing: 1px;">New Order</h1>
+                    <td style="background-color: #0A0A0A; padding: 30px; text-align: center;">
+                      <img src="${process.env.CLIENT_URL || 'https://grandma-jazz-murex.vercel.app'}/images/Grandma-Jazz-Logo.webp" alt="Grandma Jazz Logo" style="max-width: 200px; height: auto; display: block; margin: 0 auto;" />
                     </td>
                   </tr>
                   
