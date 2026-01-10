@@ -125,30 +125,30 @@ Country: ${order.destinationCountry}
                     <td style="padding: 0 30px 30px 30px;">
                       <div style="background-color: #1a1a1a; padding: 25px; border-radius: 12px; border: 1px solid #7c4d33;">
                         <h2 style="margin: 0 0 20px 0; color: #b88c41; font-size: 18px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Order Items</h2>
-                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                          ${order.orderItems.map((item, index) => `
-                            <tr>
-                              <td style="padding: ${index > 0 ? '15px 0 0 0' : '0'}; border-top: ${index > 0 ? '1px solid #7c4d33' : 'none'};">
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                                  <tr>
-                                    <td style="color: #F5F1E6; font-size: 15px; padding-bottom: 5px;">
-                                      <strong>${item.name}</strong>
-                                    </td>
-                                    <td align="right" style="color: #b88c41; font-size: 15px; font-weight: 500;">
-                                      $${(item.price * item.quantity).toFixed(2)}
-                                    </td>
-                                  </tr>
-                                  <tr>
-                                    <td style="color: #e3dcd4; font-size: 13px;">
-                                      Quantity: ${item.quantity} × $${item.price.toFixed(2)}
-                                    </td>
-                                    <td></td>
-                                  </tr>
-                                </table>
-                              </td>
-                            </tr>
-                          `).join('')}
-                        </table>
+                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                           ${order.orderItems.map((item, index) => `
+                             <tr>
+                               <td style="padding: ${index > 0 ? '15px 0 0 0' : '0'};">
+                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                   <tr>
+                                     <td style="color: #F5F1E6; font-size: 15px; padding-bottom: 5px;">
+                                       <strong>${item.name}</strong>
+                                     </td>
+                                     <td align="right" style="color: #b88c41; font-size: 15px; font-weight: 500;">
+                                       $${(item.price * item.quantity).toFixed(2)}
+                                     </td>
+                                   </tr>
+                                   <tr>
+                                     <td style="color: #e3dcd4; font-size: 13px;">
+                                       Quantity: ${item.quantity} × $${item.price.toFixed(2)}
+                                     </td>
+                                     <td></td>
+                                   </tr>
+                                 </table>
+                               </td>
+                             </tr>
+                           `).join('')}
+                         </table>
                         
                         <!-- Summary -->
                         <div style="margin-top: 25px; padding-top: 20px; border-top: 2px solid #7c4d33;">
