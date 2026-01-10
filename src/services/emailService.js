@@ -71,8 +71,9 @@ ${order.shippingAddress}
 Country: ${order.destinationCountry}
     `.trim();
     
-    const testEmail = 'kraichan.official@gmail.com';
-    const recipientEmail = testEmail; 
+    // ส่งอีเมลไปยังแอดมินทุกคน
+    const adminEmails = admins.map(admin => admin.email);
+    const recipientEmail = adminEmails.join(', '); 
     
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -213,7 +214,7 @@ Country: ${order.destinationCountry}
     };
     
     const info = await transporter.sendMail(mailOptions);
-    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยัง ${recipientEmail} แล้ว (โหมดเทส): ${info.messageId}`);
+    console.log(`อีเมลแจ้งเตือนคำสั่งซื้อส่งไปยังแอดมินแล้ว: ${info.messageId}`);
     
     return info;
   } catch (error) {

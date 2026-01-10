@@ -365,19 +365,16 @@ const retryPayment = asyncHandler(async (req, res) => {
     sessionConfig.metadata.discountAmount = order.discountAmount.toString();
     
     try {
-      // สร้าง coupon ใน Stripe แบบ dynamic
       const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
       
-      // สร้าง coupon แบบ fixed amount (ในหน่วยเซ็นต์)
       const coupon = await stripe.coupons.create({
         id: couponId,
-        amount_off: Math.round(order.discountAmount * 100), // แปลงเป็นเซ็นต์
+        amount_off: Math.round(order.discountAmount * 100), 
         currency: 'usd',
         duration: 'once',
         name: `Discount: ${order.discountCode}`
       });
       
-      // เพิ่ม discounts parameter ใน session config
       sessionConfig.discounts = [{
         coupon: coupon.id
       }];
@@ -385,7 +382,6 @@ const retryPayment = asyncHandler(async (req, res) => {
       console.log(`Stripe coupon created for retry payment discount ${order.discountCode}: ${coupon.id}, amount: $${order.discountAmount}`);
     } catch (couponError) {
       console.error('Error creating Stripe coupon for retry payment:', couponError);
-      // ถ้าสร้าง coupon ไม่ได้ (เช่น coupon ID ซ้ำ) ให้ลองสร้างใหม่โดยไม่ระบุ ID
       try {
         const coupon = await stripe.coupons.create({
           amount_off: Math.round(order.discountAmount * 100),

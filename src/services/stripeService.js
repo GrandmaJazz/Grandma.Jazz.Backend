@@ -138,10 +138,6 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
 
     console.log('Stripe checkout session created successfully:', session.id);
     
-    // ส่งอีเมลแจ้งเตือนไปยังแอดมินทันทีเมื่อมีคำสั่งซื้อใหม่ (สถานะ PENDING)
-    // สำหรับการทดสอบ - ส่งแม้ยังไม่ได้ชำระเงิน
-    await sendOrderNotificationToAdmins(order);
-    
     return { session, order };
   } catch (error) {
     console.error('Stripe checkout error:', error);
