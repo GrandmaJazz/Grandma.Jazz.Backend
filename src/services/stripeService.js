@@ -15,7 +15,7 @@ const Order = require('../models/Order');
 const Ticket = require('../models/Ticket');
 const Discount = require('../models/Discount');
 const { ORDER_STATUS } = require('../config/constants');
-const { sendOrderNotificationToAdmins } = require('./emailService');
+const { sendOrderNotificationToAdmins, sendOrderConfirmationToCustomer } = require('./emailService');
 
 
 const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
@@ -138,6 +138,13 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
 
     console.log('Stripe checkout session created successfully:', session.id);
     
+    // ส่งอีเมลแจ้งเตือนไปยังแอดมินทันทีเมื่อมีคำสั่งซื้อใหม่ (สถานะ PENDING)
+    // สำหรับการทดสอบ - ส่งแม้ยังไม่ได้ชำระเงิน
+    await sendOrderNotificationToAdmins(order);
+    
+    // ส่งอีเมลยืนยันไปหาลูกค้า
+    await sendOrderConfirmationToCustomer(order);
+    
     return { session, order };
   } catch (error) {
     console.error('Stripe checkout error:', error);
@@ -253,6 +260,9 @@ const verifyPayment = async (sessionId) => {
         
         await sendOrderNotificationToAdmins(order);
         
+        // ส่งอีเมลยืนยันไปหาลูกค้า
+        await sendOrderConfirmationToCustomer(order);
+        
         return { success: true, order };
       }
     }
@@ -351,6 +361,9 @@ const handleWebhook = async (payload, signature) => {
             console.log(`Webhook: Order ${orderId} marked as paid`);
             
             await sendOrderNotificationToAdmins(order);
+            
+            // ส่งอีเมลยืนยันไปหาลูกค้า
+            await sendOrderConfirmationToCustomer(order);
           }
         }
       }
