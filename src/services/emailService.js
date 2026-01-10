@@ -92,12 +92,12 @@ Country: ${order.destinationCountry}
               <td align="center">
                 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #0A0A0A; border-radius: 24px; overflow: hidden; border: 1px solid #7c4d33; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
                   
-                  <!-- Header -->
-                  <tr>
-                    <td style="background-color: #0A0A0A; padding: 30px; text-align: center;">
-                      <img src="${process.env.CLIENT_URL || 'https://grandma-jazz-murex.vercel.app'}/images/Grandma-Jazz-Logo.webp" alt="Grandma Jazz Logo" style="max-width: 200px; height: auto; display: block; margin: 0 auto;" />
-                    </td>
-                  </tr>
+                   <!-- Header -->
+                   <tr>
+                     <td style="background: linear-gradient(135deg, #b88c41 0%, #7c4d33 100%); padding: 30px; text-align: center;">
+                       <h1 style="margin: 0; color: #F5F1E6; font-size: 28px; font-weight: 300; letter-spacing: 1px;">Confirmed Order</h1>
+                     </td>
+                   </tr>
                   
                   <!-- Order Details Section -->
                   <tr>
@@ -202,12 +202,6 @@ Country: ${order.destinationCountry}
                     </td>
                   </tr>
                   
-                  <!-- Footer -->
-                  <tr>
-                    <td style="padding: 20px 30px; background-color: #1a1a1a; border-top: 1px solid #7c4d33; text-align: center;">
-                      <p style="margin: 0; color: #e3dcd4; font-size: 12px;">Grandma Jazz</p>
-                    </td>
-                  </tr>
                   
                 </table>
               </td>
