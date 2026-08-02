@@ -96,7 +96,15 @@ const uploaders = {
   musicUpload: createS3Upload('music', { fileSize: 20 * 1024 * 1024 }), // 20MB
   
   // Upload สำหรับการ์ด
-  cardUpload: createS3Upload('cards', { fileSize: 5 * 1024 * 1024 }), // 5MB
+  // 20MB (was 5MB): cardRoutes.js wires BOTH the 'image' and 'music' fields
+  // of the create/update-card routes through this single multer instance,
+  // and one multer instance has one shared fileSize limit across all its
+  // fields — 5MB was sized only for the card cover image and silently
+  // rejected any real music file over that size (Multer's LIMIT_FILE_SIZE
+  // error had no handler in errorMiddleware.js, so it surfaced as a bare
+  // 500 instead of a clear "file too large" message). Matches musicUpload's
+  // limit above since that's the actual constraint driving this route now.
+  cardUpload: createS3Upload('cards', { fileSize: 20 * 1024 * 1024 }), // 20MB
   
   // Upload สำหรับบล็อก
   blogUpload: createS3Upload('blogs', { fileSize: 5 * 1024 * 1024 }), // 5MB
