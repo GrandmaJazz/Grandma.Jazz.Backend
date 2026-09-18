@@ -2,7 +2,7 @@
 const asyncHandler = require('express-async-handler');
 const Order = require('../models/Order');
 const User = require('../models/User');
-const Product = require('../models/Product');
+const { loadShippingQuote, assertAcceptedQuote } = require('../services/shippingService');
 const Discount = require('../models/Discount');
 const { createCheckoutSession, verifyPayment } = require('../services/stripeService');
 const { ORDER_STATUS } = require('../config/constants');
@@ -11,10 +11,10 @@ const { ORDER_STATUS } = require('../config/constants');
 // @route   POST /api/orders
 // @access  Private
 const createOrder = asyncHandler(async (req, res) => {
-  const { orderItems, shippingAddress, destinationCountry, shippingCost, discountCode } = req.body;
+  const { orderItems: requestedItems, shippingAddress, destinationCountry, discountCode } = req.body;
   
   // ตรวจสอบข้อมูลที่จำเป็น
-  if (!orderItems || orderItems.length === 0) {
+  if (!requestedItems || requestedItems.length === 0) {
     res.status(400);
     throw new Error('ไม่มีรายการสินค้าในคำสั่งซื้อ');
   }
@@ -27,11 +27,6 @@ const createOrder = asyncHandler(async (req, res) => {
   if (!destinationCountry) {
     res.status(400);
     throw new Error('กรุณาเลือกประเทศปลายทาง');
-  }
-  
-  if (shippingCost === undefined || shippingCost < 0) {
-    res.status(400);
-    throw new Error('ค่าส่งไม่ถูกต้อง');
   }
   
   // ตรวจสอบข้อมูลผู้ใช้
@@ -47,27 +42,17 @@ const createOrder = asyncHandler(async (req, res) => {
     throw new Error('กรุณาระบุเบอร์โทรศัพท์ก่อนสั่งซื้อ');
   }
   
-  // ตรวจสอบว่าสินค้าทุกรายการมีอยู่จริงและไม่หมด
-  for (const item of orderItems) {
-    const product = await Product.findById(item.product);
-    
-    if (!product) {
-      res.status(404);
-      throw new Error(`ไม่พบสินค้า: ${item.name}`);
-    }
-    
-    if (product.isOutOfStock) {
-      res.status(400);
-      throw new Error(`สินค้าหมด: ${product.name}`);
-    }
+  // Reload catalogue prices, product weights and shipping at payment time.
+  // Browser-provided prices, images, names and postage are never charged.
+  let quote;
+  try {
+    quote = await loadShippingQuote(requestedItems, destinationCountry);
+    assertAcceptedQuote(quote, req.body);
+  } catch (error) {
+    res.status(error.status || 500);
+    throw error;
   }
-  
-  // คำนวณยอดรวมก่อนส่วนลด
-  const subtotal = orderItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
-  const totalBeforeDiscount = subtotal + shippingCost;
+  const { orderItems, shippingCost, subtotal } = quote;
   
   // ตรวจสอบและใช้ส่วนลด (ถ้ามี)
   let discountAmount = 0;
@@ -111,7 +96,8 @@ const createOrder = asyncHandler(async (req, res) => {
     destinationCountry,
     shippingCost,
     finalDiscountCode,
-    discountAmount
+    discountAmount,
+    quote
   );
   
   res.status(201).json({
@@ -311,6 +297,22 @@ const retryPayment = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('คำสั่งซื้อนี้ชำระเงินแล้ว');
   }
+
+  if (order.status === ORDER_STATUS.CANCELED) {
+    res.status(400);
+    throw new Error('This order has been cancelled. Please start a new checkout.');
+  }
+  try {
+    const quote = await loadShippingQuote(order.orderItems, order.destinationCountry);
+    assertAcceptedQuote(quote, {
+      quoteId: order.shippingQuote?.quoteId,
+      shippingCost: order.shippingCost,
+      subtotal: order.orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    });
+  } catch (error) {
+    res.status(error.status || 500);
+    throw error;
+  }
   
   // สร้าง checkout session ใหม่ (ไม่สร้าง order ใหม่)
   const user = await User.findById(req.user._id);
@@ -351,6 +353,7 @@ const retryPayment = asyncHandler(async (req, res) => {
     payment_method_types: ['card'],
     line_items: lineItems,
     mode: 'payment',
+    expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
     success_url: `${process.env.CLIENT_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.CLIENT_URL}/orders/${order._id}`,
     metadata: {
@@ -397,7 +400,7 @@ const retryPayment = asyncHandler(async (req, res) => {
         console.log(`Stripe coupon created (auto ID) for retry payment discount ${order.discountCode}: ${coupon.id}`);
       } catch (retryError) {
         console.error('Error creating Stripe coupon (retry):', retryError);
-        // ถ้าสร้าง coupon ไม่ได้ ให้ข้ามไป (ยังคงส่ง metadata ไว้)
+        throw new Error('Unable to apply your discount. Please retry payment.');
       }
     }
   }

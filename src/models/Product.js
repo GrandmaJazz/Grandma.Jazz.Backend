@@ -1,5 +1,6 @@
 //backend/src/models/Product.js
 const mongoose = require('mongoose');
+const { roundProductPrice } = require('../utils/productPrice');
 
 const productSchema = mongoose.Schema(
   {
@@ -15,6 +16,8 @@ const productSchema = mongoose.Schema(
     price: {
       type: Number,
       required: true,
+      get: value => value == null ? value : roundProductPrice(value),
+      set: value => value == null ? value : roundProductPrice(value),
       min: 0
     },
     category: {
@@ -43,6 +46,19 @@ const productSchema = mongoose.Schema(
         message: 'At least one image is required'
       }
     },
+    // Measured individual paper protection, excluding the shared outer carton.
+    // Null means unmeasured; explicit zero is valid for an unwrapped item.
+    shippingPackagingGrams: {
+      type: Number,
+      default: null,
+      min: 0,
+      validate: { validator: value => value == null || Number.isSafeInteger(value), message: 'Packaging weight must be whole grams' }
+    },
+    // Approve each product/destination only after carrier and import checks.
+    internationalShippingCountries: {
+      type: [String],
+      default: []
+    },
     isOutOfStock: {
       type: Boolean,
       default: false
@@ -53,7 +69,9 @@ const productSchema = mongoose.Schema(
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
   }
 );
 

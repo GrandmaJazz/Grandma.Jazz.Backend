@@ -1,6 +1,28 @@
 //backend/src/controllers/productController.js
 const asyncHandler = require('express-async-handler');
 const Product = require('../models/Product');
+const { countries } = require('../services/shippingService');
+
+function shippingFields(body, res) {
+  const result = {};
+  if (body.shippingPackagingGrams !== undefined) {
+    const value = body.shippingPackagingGrams;
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0 || value > 30000)) {
+      res.status(400);
+      throw new Error('Packaging weight must be whole grams between 0 and 30000, or blank if unmeasured.');
+    }
+    result.shippingPackagingGrams = value;
+  }
+  if (body.internationalShippingCountries !== undefined) {
+    const selected = body.internationalShippingCountries;
+    if (!Array.isArray(selected) || selected.some(country => country === 'Thailand' || !countries.includes(country))) {
+      res.status(400);
+      throw new Error('Please select supported international destinations.');
+    }
+    result.internationalShippingCountries = [...new Set(selected)];
+  }
+  return result;
+}
 
 // @desc    ดึงข้อมูลสินค้าทั้งหมด
 // @route   GET /api/products
@@ -72,6 +94,7 @@ const createProduct = asyncHandler(async (req, res) => {
   
   // แปลงข้อมูลให้อยู่ในรูปแบบที่ถูกต้อง
   const productData = {
+    ...shippingFields(req.body, res),
     name,
     description,
     price: parseFloat(price),
@@ -140,6 +163,7 @@ const updateProduct = asyncHandler(async (req, res) => {
   
   // แปลงข้อมูลให้อยู่ในรูปแบบที่ถูกต้อง
   const productData = {
+    ...shippingFields(req.body, res),
     name,
     description,
     price: price ? parseFloat(price) : undefined,
@@ -182,6 +206,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     req.params.id,
     {
       $set: {
+        ...shippingFields(req.body, res),
         name: productData.name || product.name,
         description: productData.description || product.description,
         price: productData.price !== undefined ? productData.price : product.price,
@@ -192,7 +217,7 @@ const updateProduct = asyncHandler(async (req, res) => {
         isFeatured: productData.isFeatured !== undefined ? productData.isFeatured : product.isFeatured,
       }
     },
-    { new: true } // ส่งกลับเอกสารที่อัปเดตแล้ว
+    { new: true, runValidators: true } // ส่งกลับเอกสารที่อัปเดตแล้ว
   );
   
   if (!updatedProduct) {

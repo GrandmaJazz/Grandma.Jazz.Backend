@@ -56,6 +56,18 @@ const orderSchema = mongoose.Schema(
       required: true,
       min: 0
     },
+    shippingQuote: {
+      quoteId: String,
+      postageThb: Number,
+      thbPerUsd: Number,
+      netGrams: Number,
+      grossGrams: Number,
+      packagingGrams: Number,
+      packingProfile: String,
+      packingVersion: String,
+      tariffVersion: String,
+      service: String
+    },
     totalAmount: {
       type: Number,
       required: true
