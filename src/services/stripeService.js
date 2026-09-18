@@ -18,7 +18,7 @@ const { ORDER_STATUS } = require('../config/constants');
 const { sendOrderNotificationToAdmins, sendOrderConfirmationToCustomer } = require('./emailService');
 
 
-const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
+const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0, shippingQuote = null) => {
   try {
 
     if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
@@ -60,7 +60,7 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       (sum, item) => sum + item.price * item.quantity,
       0
     );
-    const totalAmount = subtotal + shippingCost - discountAmount;
+    const totalAmount = (Math.round(subtotal * 100) + Math.round(shippingCost * 100) - Math.round(discountAmount * 100)) / 100;
 
 
     const order = await Order.create({
@@ -70,6 +70,7 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       contactPhone,
       destinationCountry,
       shippingCost,
+      shippingQuote,
       discountCode,
       discountAmount,
       totalAmount,
@@ -85,6 +86,7 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: 'payment',
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
@@ -130,6 +132,7 @@ const createCheckoutSession = async (orderItems, userId, shippingAddress, contac
           console.log(`Stripe coupon created (auto ID) for discount ${discountCode}: ${coupon.id}`);
         } catch (retryError) {
           console.error('Error creating Stripe coupon (retry):', retryError);
+          throw new Error('Unable to apply your discount. Please retry payment.');
         }
       }
     }

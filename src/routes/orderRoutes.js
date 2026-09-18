@@ -13,6 +13,10 @@ const {
   cancelOrder
 } = require('../controllers/orderController');
 const { protect, admin, completeProfile } = require('../middleware/authMiddleware');
+const { getShippingCountries, getShippingQuote } = require('../controllers/shippingController');
+
+router.get('/shipping-countries', getShippingCountries);
+router.post('/shipping-quote', protect, getShippingQuote);
 // Routes สำหรับดึงข้อมูลคำสั่งซื้อทั้งหมด (แอดมิน) และสร้างคำสั่งซื้อใหม่
 router
   .route('/')
