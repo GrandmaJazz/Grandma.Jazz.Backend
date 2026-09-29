@@ -2,6 +2,8 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getShippingConfig,
+  quoteOrder,
   createOrder,
   checkPaymentStatus,
   getMyOrders,
@@ -13,6 +15,9 @@ const {
   cancelOrder
 } = require('../controllers/orderController');
 const { protect, admin, completeProfile } = require('../middleware/authMiddleware');
+router.get('/shipping-config', getShippingConfig);
+router.post('/quote', protect, quoteOrder);
+
 // Routes สำหรับดึงข้อมูลคำสั่งซื้อทั้งหมด (แอดมิน) และสร้างคำสั่งซื้อใหม่
 router
   .route('/')

@@ -56,6 +56,7 @@ const orderSchema = mongoose.Schema(
       required: true,
       min: 0
     },
+    checkoutQuote: { type: mongoose.Schema.Types.Mixed },
     totalAmount: {
       type: Number,
       required: true

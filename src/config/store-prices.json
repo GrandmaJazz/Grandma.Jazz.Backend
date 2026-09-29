@@ -1,0 +1,147 @@
+{
+  "version": "store-price-2026-09-29",
+  "thbPerUsd": 33.28,
+  "source": "Verified POS/handover prices. User confirmed T-shirt THB 1300 and on 17 September 2026 confirmed Smoking bag, Matches and Hand fan THB 160 and Zippo THB 3300.",
+  "posExportUrl": "https://docs.google.com/spreadsheets/d/1gdJpXJ-GY2CvPox6GIZ4bWmg7nCcVtpp/edit",
+  "pendingVerification": [
+    "Rolling kit",
+    "Storage jar"
+  ],
+  "products": [
+    {
+      "id": "6929665bbe2f425d5baed3f0",
+      "name": "Bamboo j holder",
+      "previousPriceUsd": 10.52,
+      "storePriceThb": 350,
+      "priceUsd": 11,
+      "originalEmbeddedPriceUsd": 15
+    },
+    {
+      "id": "69296931be2f425d5baed478",
+      "name": "Classic snake board game",
+      "previousPriceUsd": 16.53,
+      "storePriceThb": 550,
+      "priceUsd": 17,
+      "originalEmbeddedPriceUsd": 15
+    },
+    {
+      "id": "69296a1cbe2f425d5baed4a7",
+      "name": "Smoking Hat",
+      "previousPriceUsd": 11.42,
+      "storePriceThb": 380,
+      "priceUsd": 12,
+      "originalEmbeddedPriceUsd": 12
+    },
+    {
+      "id": "69296a77be2f425d5baed4b3",
+      "name": "Rolling tray",
+      "previousPriceUsd": 16.53,
+      "storePriceThb": 550,
+      "priceUsd": 17,
+      "originalEmbeddedPriceUsd": 15
+    },
+    {
+      "id": "6960a7f006185775d0cd444c",
+      "name": "Hand fan",
+      "previousPriceUsd": 4.81,
+      "storePriceThb": 160,
+      "priceUsd": 5,
+      "originalEmbeddedPriceUsd": 10
+    },
+    {
+      "id": "6960c0c906185775d0cd4497",
+      "name": "Cork Coaster",
+      "previousPriceUsd": 4.81,
+      "storePriceThb": 160,
+      "priceUsd": 5,
+      "originalEmbeddedPriceUsd": 5
+    },
+    {
+      "id": "6960c21106185775d0cd449e",
+      "name": "Coffee bottle",
+      "previousPriceUsd": 21.03,
+      "storePriceThb": 700,
+      "priceUsd": 22,
+      "originalEmbeddedPriceUsd": 20
+    },
+    {
+      "id": "6960d2a406185775d0cd4683",
+      "name": "Classic Grinder",
+      "previousPriceUsd": 16.53,
+      "storePriceThb": 550,
+      "priceUsd": 17,
+      "originalEmbeddedPriceUsd": 16
+    },
+    {
+      "id": "6960d35706185775d0cd4692",
+      "name": "Small grinder",
+      "previousPriceUsd": 6.01,
+      "storePriceThb": 200,
+      "priceUsd": 7,
+      "originalEmbeddedPriceUsd": 8
+    },
+    {
+      "id": "6aaa37a3af0110889be25e65",
+      "name": "Smoking bag",
+      "previousPriceUsd": 4.81,
+      "storePriceThb": 160,
+      "priceUsd": 5,
+      "originalEmbeddedPriceUsd": 10
+    },
+    {
+      "id": "6aaa37d4af0110889be25e6c",
+      "name": "T-shirt",
+      "previousPriceUsd": 39.06,
+      "storePriceThb": 1300,
+      "priceUsd": 40,
+      "originalEmbeddedPriceUsd": 55
+    },
+    {
+      "id": "6aaa388eaf0110889be25eb3",
+      "name": "Matches",
+      "previousPriceUsd": 4.81,
+      "storePriceThb": 160,
+      "priceUsd": 5,
+      "originalEmbeddedPriceUsd": 10
+    },
+    {
+      "id": "6aaa39bbaf0110889be25ec8",
+      "name": "Umbrella",
+      "previousPriceUsd": 24.04,
+      "storePriceThb": 800,
+      "priceUsd": 25,
+      "originalEmbeddedPriceUsd": 39
+    },
+    {
+      "id": "6aaa3a0faf0110889be25f00",
+      "name": "Coffee beans",
+      "previousPriceUsd": 16.53,
+      "storePriceThb": 550,
+      "priceUsd": 17,
+      "originalEmbeddedPriceUsd": 32
+    },
+    {
+      "id": "6aaa4bd1c0aa595897232930",
+      "name": "Zippo",
+      "previousPriceUsd": 99.16,
+      "storePriceThb": 3300,
+      "priceUsd": 100,
+      "originalEmbeddedPriceUsd": 115
+    }
+  ],
+  "copyUpdates": [
+    {
+      "id": "6aaa39bbaf0110889be25ec8",
+      "name": "Umbrella",
+      "previousDescription": "Rain or shine, Grandma has you covered. Built to last longer than the storm, and to look right on the walk home.",
+      "description": "A Grandma Jazz umbrella for rainy days and a little shade on the walk home."
+    },
+    {
+      "id": "6aaa4bb3c0aa59589723292a",
+      "name": "Storage jar",
+      "previousDescription": "Up your style with a classic herb jar, UV protected to keep freshness in and moisture away, just the way Grandma does it.",
+      "description": "A classic herb storage jar, just the way Grandma likes it."
+    }
+  ],
+  "rounding": "Round up to the next whole USD, as requested 29 September 2026. Shipping remains separate."
+}

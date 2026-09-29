@@ -7,7 +7,7 @@ if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSe
   console.error('ERROR: Stripe Secret Key ไม่ถูกกำหนดหรือไม่ถูกต้อง!');
   console.error('กรุณาตรวจสอบไฟล์ .env และตั้งค่า STRIPE_SECRET_KEY ให้ถูกต้อง');
 } else {
-  console.log('Stripe Secret Key ถูกโหลดแล้ว (เริ่มต้นด้วย: ' + stripeSecretKey.substring(0, 7) + '...)');
+  console.log('Stripe payment service configured.');
 }
 
 const stripe = require('stripe')(stripeSecretKey);
@@ -18,139 +18,16 @@ const { ORDER_STATUS } = require('../config/constants');
 const { sendOrderNotificationToAdmins, sendOrderConfirmationToCustomer } = require('./emailService');
 
 
-const createCheckoutSession = async (orderItems, userId, shippingAddress, contactPhone, destinationCountry, shippingCost, discountCode = null, discountAmount = 0) => {
-  try {
-
-    if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
-      throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
-    }
-
-    const lineItems = orderItems.map(item => {
-      return {
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: item.name,
-            images: [item.image],
-            description: `จำนวน: ${item.quantity}`
-          },
-          unit_amount: Math.round(item.price * 100) 
-        },
-        quantity: item.quantity
-      };
-    });
-
-
-    if (shippingCost > 0) {
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: `Shipping to ${destinationCountry}`,
-            description: destinationCountry === 'Thailand' ? 'Domestic Shipping' : 'EMS World Merchandise'
-          },
-          unit_amount: Math.round(shippingCost * 100) 
-        },
-        quantity: 1
-      });
-    }
-
-
-    const subtotal = orderItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const totalAmount = subtotal + shippingCost - discountAmount;
-
-
-    const order = await Order.create({
-      user: userId,
-      orderItems,
-      shippingAddress,
-      contactPhone,
-      destinationCountry,
-      shippingCost,
-      discountCode,
-      discountAmount,
-      totalAmount,
-      status: ORDER_STATUS.PENDING
-    });
-
-    const successUrl = `${process.env.CLIENT_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${process.env.CLIENT_URL}/checkout/cancel`;
-    
-    console.log('Creating Stripe checkout session with URLs:', { successUrl, cancelUrl });
-
-    const sessionConfig = {
-      payment_method_types: ['card'],
-      line_items: lineItems,
-      mode: 'payment',
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        orderId: order._id.toString(),
-        type: 'order' 
-      }
-    };
-
-    if (discountCode && discountAmount > 0) {
-      sessionConfig.metadata.discountCode = discountCode;
-      sessionConfig.metadata.discountAmount = discountAmount.toString();
-      
-      try {
-        const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
-        
-        const coupon = await stripe.coupons.create({
-          id: couponId,
-          amount_off: Math.round(discountAmount * 100), 
-          currency: 'usd',
-          duration: 'once',
-          name: `Discount: ${discountCode}`
-        });
-        
-        sessionConfig.discounts = [{
-          coupon: coupon.id
-        }];
-        
-        console.log(`Stripe coupon created for discount ${discountCode}: ${coupon.id}, amount: $${discountAmount}`);
-      } catch (couponError) {
-        console.error('Error creating Stripe coupon:', couponError);
-        try {
-          const coupon = await stripe.coupons.create({
-            amount_off: Math.round(discountAmount * 100),
-            currency: 'usd',
-            duration: 'once',
-            name: `Discount: ${discountCode}`
-          });
-          
-          sessionConfig.discounts = [{
-            coupon: coupon.id
-          }];
-          
-          console.log(`Stripe coupon created (auto ID) for discount ${discountCode}: ${coupon.id}`);
-        } catch (retryError) {
-          console.error('Error creating Stripe coupon (retry):', retryError);
-        }
-      }
-    }
-
-    const session = await stripe.checkout.sessions.create(sessionConfig);
-
-    console.log('Stripe checkout session created successfully:', session.id);
-    
-    // ไม่ส่งอีเมลตอนนี้ - จะส่งเมื่อชำระเงินสำเร็จเท่านั้น
-    
-    return { session, order };
-  } catch (error) {
-    console.error('Stripe checkout error:', error);
-    if (error.type) {
-      console.error('Stripe error type:', error.type);
-    }
-    if (error.raw) {
-      console.error('Stripe raw error:', error.raw);
-    }
-    throw new Error('ไม่สามารถสร้าง checkout session ได้: ' + (error.message || 'Unknown error'));
-  }
+const { createPaymentSession } = require('./checkoutPayment');
+const createCheckoutSession = async (quote, userId, shippingAddress, contactPhone) => {
+  const order = await Order.create({
+    user: userId, orderItems: quote.orderItems, shippingAddress, contactPhone,
+    destinationCountry: quote.destinationCountry, shippingCost: quote.shipping.shippingCents / 100,
+    discountCode: quote.discountCode, discountAmount: quote.discountCents / 100,
+    totalAmount: quote.totalCents / 100, checkoutQuote: quote, status: ORDER_STATUS.PENDING,
+  });
+  const session = await createPaymentSession(stripe, quote, order._id, process.env.CLIENT_URL);
+  return { session, order };
 };
 
 const createTicketCheckoutSession = async (ticketId, userId) => {
@@ -235,6 +112,9 @@ const verifyPayment = async (sessionId) => {
       const order = await Order.findById(orderId);
       
       if (order) {
+        if (order.checkoutQuote && (session.currency !== 'usd' || session.amount_total !== order.checkoutQuote.totalCents)) {
+          throw new Error('Payment amount does not match the order quote.');
+        }
         order.isPaid = true;
         order.paidAt = Date.now();
         order.status = ORDER_STATUS.PAID;
@@ -337,6 +217,9 @@ const handleWebhook = async (payload, signature) => {
           
           const order = await Order.findById(orderId);
           if (order) {
+            if (order.checkoutQuote && (session.currency !== 'usd' || session.amount_total !== order.checkoutQuote.totalCents)) {
+              throw new Error('Payment amount does not match the order quote.');
+            }
             order.isPaid = true;
             order.paidAt = Date.now();
             order.status = ORDER_STATUS.PAID;

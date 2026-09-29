@@ -57,157 +57,35 @@ const getProductById = asyncHandler(async (req, res) => {
     });
   } else {
     res.status(404);
-    throw new Error('ไม่พบสินค้า');
+    throw new Error('Product not found.');
   }
 });
 
 // @desc    สร้างสินค้าใหม่
 // @route   POST /api/products
 // @access  Private/Admin
+const { productInput } = require('../services/productInput');
 const createProduct = asyncHandler(async (req, res) => {
-  // Log ข้อมูลที่ได้รับมาเพื่อ debug
-  console.log('Request body:', req.body);
-  
-  const { name, description, price, category, weight, images, isFeatured, isOutOfStock } = req.body;
-  
-  // แปลงข้อมูลให้อยู่ในรูปแบบที่ถูกต้อง
-  const productData = {
-    name,
-    description,
-    price: parseFloat(price),
-    weight: parseFloat(weight),
-    category,
-    images: Array.isArray(images) ? images : [images], // ตรวจสอบว่าเป็น array หรือไม่
-    isFeatured: isFeatured === true || isFeatured === 'true',
-    isOutOfStock: isOutOfStock === true || isOutOfStock === 'true'
-  };
-  
-  console.log('Processed product data:', productData);
-  
-  // ตรวจสอบข้อมูลที่จำเป็น
-  if (!name || !description || isNaN(productData.price) || !category) {
-    console.log('Validation failed:', { name, description, price, category });
+  const data = productInput(req.body);
+  if (data.isFeatured && await Product.countDocuments({ isFeatured: true }) >= 4) {
     res.status(400);
-    throw new Error('กรุณากรอกข้อมูลให้ครบถ้วน');
+    throw new Error('Maximum of four featured products reached.');
   }
-  
-  // ตรวจสอบน้ำหนัก
-  if (!weight || isNaN(productData.weight) || productData.weight <= 0 || productData.weight > 30) {
-    console.log('Weight validation failed:', weight);
-    res.status(400);
-    throw new Error('น้ำหนักต้องอยู่ระหว่าง 0-30 kg');
-  }
-  
-  // ตรวจสอบว่ามีรูปภาพหรือไม่
-  if (!productData.images || productData.images.length === 0 || productData.images[0] === undefined) {
-    console.log('Images validation failed:', productData.images);
-    res.status(400);
-    throw new Error('กรุณาอัปโหลดรูปภาพอย่างน้อย 1 รูป');
-  }
-  
-  // ตรวจสอบจำนวนสินค้าขายดี
-  if (productData.isFeatured) {
-    const featuredCount = await Product.countDocuments({ isFeatured: true });
-    
-    if (featuredCount >= 4) {
-      res.status(400);
-      throw new Error('ไม่สามารถเพิ่มสินค้าขายดีได้อีก (สูงสุด 4 รายการ)');
-    }
-  }
-  
-  // สร้างสินค้าใหม่
-  const product = await Product.create(productData);
-  
-  if (product) {
-    res.status(201).json({
-      success: true,
-      product
-    });
-  } else {
-    res.status(400);
-    throw new Error('ข้อมูลสินค้าไม่ถูกต้อง');
-  }
+  const product = await Product.create(data);
+  res.status(201).json({ success: true, product });
 });
 
-// @desc    อัปเดตข้อมูลสินค้า
-// @route   PUT /api/products/:id
-// @access  Private/Admin
 const updateProduct = asyncHandler(async (req, res) => {
-  // Log ข้อมูลที่ได้รับมา
-  console.log('Update request body:', req.body);
-  
-  const { name, description, price, category, weight, images, isFeatured, isOutOfStock } = req.body;
-  
-  // แปลงข้อมูลให้อยู่ในรูปแบบที่ถูกต้อง
-  const productData = {
-    name,
-    description,
-    price: price ? parseFloat(price) : undefined,
-    weight: weight ? parseFloat(weight) : undefined,
-    category,
-    images: images ? (Array.isArray(images) ? images : [images]) : undefined,
-    isFeatured: isFeatured === true || isFeatured === 'true',
-    isOutOfStock: isOutOfStock === true || isOutOfStock === 'true'
-  };
-  
-  console.log('Processed update data:', productData);
-  
-  // ตรวจสอบน้ำหนัก (ถ้ามีการส่งมา)
-  if (weight !== undefined && (isNaN(productData.weight) || productData.weight <= 0 || productData.weight > 30)) {
-    console.log('Weight validation failed:', weight);
-    res.status(400);
-    throw new Error('น้ำหนักต้องอยู่ระหว่าง 0-30 kg');
-  }
-  
-  // ตรวจสอบว่ามีสินค้านี้ในฐานข้อมูลหรือไม่
+  const data = productInput(req.body, true);
   const product = await Product.findById(req.params.id);
-  
-  if (!product) {
-    res.status(404);
-    throw new Error('ไม่พบสินค้า');
+  if (!product) { res.status(404); throw new Error('Product not found.'); }
+  if (data.isFeatured && !product.isFeatured && await Product.countDocuments({ isFeatured: true }) >= 4) {
+    res.status(400);
+    throw new Error('Maximum of four featured products reached.');
   }
-  
-  // ตรวจสอบจำนวนสินค้าขายดี
-  if (productData.isFeatured && !product.isFeatured) {
-    const featuredCount = await Product.countDocuments({ isFeatured: true });
-    
-    if (featuredCount >= 4) {
-      res.status(400);
-      throw new Error('ไม่สามารถเพิ่มสินค้าขายดีได้อีก (สูงสุด 4 รายการ)');
-    }
-  }
-  
-  // ใช้ findByIdAndUpdate แทน save เพื่อความแน่ใจว่าข้อมูลถูกอัปเดตในฐานข้อมูล
-  const updatedProduct = await Product.findByIdAndUpdate(
-    req.params.id,
-    {
-      $set: {
-        name: productData.name || product.name,
-        description: productData.description || product.description,
-        price: productData.price !== undefined ? productData.price : product.price,
-        weight: productData.weight !== undefined ? productData.weight : product.weight,
-        category: productData.category || product.category,
-        images: productData.images || product.images,
-        isOutOfStock: productData.isOutOfStock !== undefined ? productData.isOutOfStock : product.isOutOfStock,
-        isFeatured: productData.isFeatured !== undefined ? productData.isFeatured : product.isFeatured,
-      }
-    },
-    { new: true } // ส่งกลับเอกสารที่อัปเดตแล้ว
-  );
-  
-  if (!updatedProduct) {
-    res.status(404);
-    throw new Error('ไม่พบสินค้าหรือการอัปเดตล้มเหลว');
-  }
-  
-  console.log('Updated product:', updatedProduct);
-  
-  res.json({
-    success: true,
-    product: updatedProduct
-  });
+  const updatedProduct = await Product.findByIdAndUpdate(req.params.id, { $set: data }, { new: true, runValidators: true });
+  res.json({ success: true, product: updatedProduct });
 });
-
 
 // @desc    ลบสินค้า
 // @route   DELETE /api/products/:id
@@ -224,7 +102,7 @@ const deleteProduct = asyncHandler(async (req, res) => {
     });
   } else {
     res.status(404);
-    throw new Error('ไม่พบสินค้า');
+    throw new Error('Product not found.');
   }
 });
 

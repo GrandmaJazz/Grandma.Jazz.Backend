@@ -7,123 +7,39 @@ const Discount = require('../models/Discount');
 const { createCheckoutSession, verifyPayment } = require('../services/stripeService');
 const { ORDER_STATUS } = require('../config/constants');
 
-// @desc    สร้างคำสั่งซื้อใหม่และเริ่มกระบวนการชำระเงิน
-// @route   POST /api/orders
-// @access  Private
+const { buildQuote, assertQuoteAccepted, defaultConfig } = require('../services/checkoutQuote');
+const quoteDependencies = {
+  findProducts: ids => Product.find({ _id: { $in: ids } }),
+  findDiscount: code => Discount.findOne({ code }),
+};
+const quoteFor = (input, userId) => buildQuote(input, userId, quoteDependencies);
+
+const getShippingConfig = (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ success: true,
+    countries: Object.keys(defaultConfig.countryZones).sort(),
+    packagingGrams: defaultConfig.packagingGrams, service: defaultConfig.service,
+    rateVersion: defaultConfig.version });
+};
+const quoteOrder = asyncHandler(async (req, res) => {
+  const quote = await quoteFor(req.body, req.user._id);
+  res.set('Cache-Control', 'no-store').json({ success: true, quote });
+});
 const createOrder = asyncHandler(async (req, res) => {
-  const { orderItems, shippingAddress, destinationCountry, shippingCost, discountCode } = req.body;
-  
-  // ตรวจสอบข้อมูลที่จำเป็น
-  if (!orderItems || orderItems.length === 0) {
+  const { shippingAddress, quoteId } = req.body;
+  if (typeof shippingAddress !== 'string' || !shippingAddress.trim() || shippingAddress.length > 2000) {
     res.status(400);
-    throw new Error('ไม่มีรายการสินค้าในคำสั่งซื้อ');
+    throw new Error('Enter a shipping address of at most 2,000 characters.');
   }
-  
-  if (!shippingAddress) {
-    res.status(400);
-    throw new Error('กรุณาระบุที่อยู่สำหรับจัดส่ง');
-  }
-  
-  if (!destinationCountry) {
-    res.status(400);
-    throw new Error('กรุณาเลือกประเทศปลายทาง');
-  }
-  
-  if (shippingCost === undefined || shippingCost < 0) {
-    res.status(400);
-    throw new Error('ค่าส่งไม่ถูกต้อง');
-  }
-  
-  // ตรวจสอบข้อมูลผู้ใช้
   const user = await User.findById(req.user._id);
-  
-  if (!user.profileComplete) {
+  if (!user?.profileComplete || !user.phone) {
     res.status(400);
-    throw new Error('กรุณากรอกข้อมูลส่วนตัวให้ครบถ้วนก่อนสั่งซื้อ');
+    throw new Error('Complete your profile and phone number before ordering.');
   }
-  
-  if (!user.phone) {
-    res.status(400);
-    throw new Error('กรุณาระบุเบอร์โทรศัพท์ก่อนสั่งซื้อ');
-  }
-  
-  // ตรวจสอบว่าสินค้าทุกรายการมีอยู่จริงและไม่หมด
-  for (const item of orderItems) {
-    const product = await Product.findById(item.product);
-    
-    if (!product) {
-      res.status(404);
-      throw new Error(`ไม่พบสินค้า: ${item.name}`);
-    }
-    
-    if (product.isOutOfStock) {
-      res.status(400);
-      throw new Error(`สินค้าหมด: ${product.name}`);
-    }
-  }
-  
-  // คำนวณยอดรวมก่อนส่วนลด
-  const subtotal = orderItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
-  const totalBeforeDiscount = subtotal + shippingCost;
-  
-  // ตรวจสอบและใช้ส่วนลด (ถ้ามี)
-  let discountAmount = 0;
-  let finalDiscountCode = null;
-  
-  if (discountCode) {
-    const discount = await Discount.findOne({ code: discountCode.toUpperCase() });
-    
-    if (!discount) {
-      res.status(404);
-      throw new Error('Discount code not found');
-    }
-    
-    // ตรวจสอบความถูกต้องของส่วนลด
-    const validityCheck = discount.isValid();
-    if (!validityCheck.valid) {
-      res.status(400);
-      throw new Error(validityCheck.message);
-    }
-    
-    // ตรวจสอบว่า user ใช้ส่วนลดนี้แล้วหรือยัง
-    if (discount.hasUserUsed(req.user._id)) {
-      res.status(400);
-      throw new Error('You have already used this discount code (limited to 1 use per user)');
-    }
-    
-    // คำนวณส่วนลด
-    const discountResult = discount.applyDiscount(subtotal);
-    discountAmount = discountResult.discountAmount;
-    finalDiscountCode = discount.code;
-    
-    // เพิ่ม user เข้าไปใน usedBy (จะบันทึกเมื่อชำระเงินสำเร็จ)
-  }
-  
-  // สร้าง checkout session กับ Stripe
-  const { session, order } = await createCheckoutSession(
-    orderItems,
-    req.user._id,
-    shippingAddress,
-    user.phone,
-    destinationCountry,
-    shippingCost,
-    finalDiscountCode,
-    discountAmount
-  );
-  
-  res.status(201).json({
-    success: true,
-    sessionId: session.id,
-    sessionUrl: session.url,
-    order: {
-      _id: order._id,
-      totalAmount: order.totalAmount,
-      status: order.status
-    }
-  });
+  const quote = await quoteFor(req.body, req.user._id);
+  assertQuoteAccepted(quote, quoteId);
+  const { session, order } = await createCheckoutSession(quote, req.user._id, shippingAddress.trim(), user.phone);
+  res.status(201).json({ success: true, sessionId: session.id, sessionUrl: session.url,
+    order: { _id: order._id, totalAmount: order.totalAmount, shippingCost: order.shippingCost, status: order.status } });
 });
 
 // @desc    ตรวจสอบสถานะการชำระเงิน
@@ -312,104 +228,18 @@ const retryPayment = asyncHandler(async (req, res) => {
     throw new Error('คำสั่งซื้อนี้ชำระเงินแล้ว');
   }
   
-  // สร้าง checkout session ใหม่ (ไม่สร้าง order ใหม่)
-  const user = await User.findById(req.user._id);
-  
-  // สร้าง line items
-  const lineItems = order.orderItems.map(item => ({
-    price_data: {
-      currency: 'usd',
-      product_data: {
-        name: item.name,
-        images: [item.image],
-        description: `จำนวน: ${item.quantity}`
-      },
-      unit_amount: Math.round(item.price * 100)
-    },
-    quantity: item.quantity
-  }));
-  
-  // เพิ่ม shipping เป็น line item
-  if (order.shippingCost > 0) {
-    lineItems.push({
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: `Shipping to ${order.destinationCountry}`,
-          description: order.destinationCountry === 'Thailand' ? 'Domestic Shipping' : 'EMS World Merchandise'
-        },
-        unit_amount: Math.round(order.shippingCost * 100)
-      },
-      quantity: 1
-    });
+  if (order.status === ORDER_STATUS.CANCELED || !order.checkoutQuote?.quoteId) {
+    res.status(409);
+    throw new Error('Please start a new checkout to review current prices and shipping.');
   }
-  
+  const quote = await quoteFor({ orderItems: order.orderItems.map(item => ({
+    product: String(item.product), quantity: item.quantity })),
+    destinationCountry: order.destinationCountry, discountCode: order.discountCode }, req.user._id);
+  assertQuoteAccepted(quote, order.checkoutQuote.quoteId);
+  const { createPaymentSession } = require('../services/checkoutPayment');
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  
-  // สร้าง session config
-  const sessionConfig = {
-    payment_method_types: ['card'],
-    line_items: lineItems,
-    mode: 'payment',
-    success_url: `${process.env.CLIENT_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.CLIENT_URL}/orders/${order._id}`,
-    metadata: {
-      orderId: order._id.toString(),
-      type: 'order'
-    }
-  };
-
-  // ถ้ามีส่วนลด ให้สร้าง coupon ใน Stripe และใช้ discounts parameter
-  if (order.discountCode && order.discountAmount && order.discountAmount > 0) {
-    sessionConfig.metadata.discountCode = order.discountCode;
-    sessionConfig.metadata.discountAmount = order.discountAmount.toString();
-    
-    try {
-      const couponId = `disc_${order._id.toString().replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}`;
-      
-      const coupon = await stripe.coupons.create({
-        id: couponId,
-        amount_off: Math.round(order.discountAmount * 100), 
-        currency: 'usd',
-        duration: 'once',
-        name: `Discount: ${order.discountCode}`
-      });
-      
-      sessionConfig.discounts = [{
-        coupon: coupon.id
-      }];
-      
-      console.log(`Stripe coupon created for retry payment discount ${order.discountCode}: ${coupon.id}, amount: $${order.discountAmount}`);
-    } catch (couponError) {
-      console.error('Error creating Stripe coupon for retry payment:', couponError);
-      try {
-        const coupon = await stripe.coupons.create({
-          amount_off: Math.round(order.discountAmount * 100),
-          currency: 'usd',
-          duration: 'once',
-          name: `Discount: ${order.discountCode}`
-        });
-        
-        sessionConfig.discounts = [{
-          coupon: coupon.id
-        }];
-        
-        console.log(`Stripe coupon created (auto ID) for retry payment discount ${order.discountCode}: ${coupon.id}`);
-      } catch (retryError) {
-        console.error('Error creating Stripe coupon (retry):', retryError);
-        // ถ้าสร้าง coupon ไม่ได้ ให้ข้ามไป (ยังคงส่ง metadata ไว้)
-      }
-    }
-  }
-  
-  // สร้าง Stripe checkout session
-  const session = await stripe.checkout.sessions.create(sessionConfig);
-  
-  res.json({
-    success: true,
-    sessionUrl: session.url,
-    sessionId: session.id
-  });
+  const session = await createPaymentSession(stripe, quote, order._id, process.env.CLIENT_URL);
+  res.json({ success: true, sessionUrl: session.url, sessionId: session.id });
 });
 
 // @desc    ยกเลิกคำสั่งซื้อ (สำหรับผู้ใช้)
@@ -454,6 +284,8 @@ const cancelOrder = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getShippingConfig,
+  quoteOrder,
   createOrder,
   checkPaymentStatus,
   getMyOrders,
