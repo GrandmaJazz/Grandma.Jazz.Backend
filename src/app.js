@@ -36,7 +36,7 @@ const discountRoutes = require('./routes/discountRoutes');
 const app = express();
 
 // Middleware
-app.use('/api/webhook', express.raw({ type: 'application/json' }));
+app.use('/api/webhook', require('./routes/webhookRoutes'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -75,20 +75,6 @@ app.use('/api/blogs', blogRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/discounts', discountRoutes);
-
-// Webhook route สำหรับ Stripe (ใช้ raw body parser)
-app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const signature = req.headers['stripe-signature'];
-  
-  try {
-    const stripeService = require('./services/stripeService');
-    const event = await stripeService.handleWebhook(req.body, signature);
-    res.json(event);
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(400).send(`Webhook Error: ${error.message}`);
-  }
-});
 
 // Test route
 app.get('/', (req, res) => {

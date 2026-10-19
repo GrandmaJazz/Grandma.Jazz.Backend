@@ -12,6 +12,7 @@ const orderItemSchema = mongoose.Schema({
     type: String,
     required: true
   },
+  size: { type: String, enum: ['S', 'M', 'L', 'XL', 'XXL'] },
   quantity: {
     type: Number,
     required: true,
@@ -57,6 +58,10 @@ const orderSchema = mongoose.Schema(
       min: 0
     },
     checkoutQuote: { type: mongoose.Schema.Types.Mixed },
+    checkoutSessionId: { type: String },
+    checkoutSessionAttempt: { type: Number, min: 1 },
+    checkoutSessionLockToken: { type: String, select: false },
+    checkoutSessionLockUntil: { type: Date, select: false },
     totalAmount: {
       type: Number,
       required: true

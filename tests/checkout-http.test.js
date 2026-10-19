@@ -21,7 +21,9 @@ require.cache[authPath] = {id:authPath,filename:authPath,loaded:true,exports:{
  admin:(req,res,next)=>next(), completeProfile:(req,res,next)=>next(),
 }};
 // Keep time deterministic while exercising the actual controller and route registration.
-require('../src/config/shipping-rates.json').reviewDueAt='2099-01-01';
+const shippingConfig = require('../src/config/shipping-rates.json');
+shippingConfig.reviewDueAt='2099-01-01';
+shippingConfig.internationalProductIds=[id];
 const app=express();app.use(express.json());app.use('/api/orders',require('../src/routes/orderRoutes'));
 app.use(require('../src/middleware/errorMiddleware').errorHandler);
 const server=app.listen(0,'127.0.0.1');

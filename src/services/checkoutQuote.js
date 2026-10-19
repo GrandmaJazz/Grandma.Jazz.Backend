@@ -1,5 +1,7 @@
 const { createHash } = require('node:crypto');
 const defaultConfig = require('../config/shipping-rates.json');
+const SHIRT_ID = '6aaa37d4af0110889be25e6c';
+const SHIRT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 
 class CheckoutError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -25,8 +27,8 @@ validateConfig(defaultConfig);
 
 function calculateShipping(country, productWeightGrams, config = defaultConfig, now = new Date()) {
   validateConfig(config);
-  if (now >= new Date(`${config.reviewDueAt}T00:00:00Z`)) fail('Shipping rates need review. Please contact the shop.', 503);
-  if (typeof country !== 'string' || !Object.hasOwn(config.countryZones, country)) fail('Shipping is unavailable for this destination.');
+  if (country !== 'Thailand' && now >= new Date(`${config.reviewDueAt}T00:00:00Z`)) fail('Shipping rates need review. Please contact the shop.', 503);
+  if (typeof country !== 'string' || !Object.hasOwn(config.countryZones, country) || (config.enabledDestinations && !config.enabledDestinations.includes(country))) fail('Please contact the shop for a delivery quote to this destination.');
   if (!Number.isSafeInteger(productWeightGrams) || productWeightGrams <= 0) fail('Cart weight is invalid.');
   const packedWeightGrams = productWeightGrams + config.packagingGrams;
   if (packedWeightGrams > config.maxWeightGrams) fail('Packed order exceeds the 30 kg shipping limit.');
@@ -55,21 +57,28 @@ async function buildQuote(input, userId, { findProducts, findDiscount, config = 
         !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)
       fail('Each product needs a valid ID and a whole quantity from 1 to 99.');
     const id = item.product.toLowerCase();
-    const quantity = (quantities.get(id) || 0) + item.quantity;
+    if (id === SHIRT_ID && !SHIRT_SIZES.includes(item.size)) fail('Choose a T-shirt size: S, M, L, XL or XXL.');
+    if (id !== SHIRT_ID && item.size != null) fail('This product does not use a size selection.');
+    const size = id === SHIRT_ID ? item.size : undefined;
+    if (quantities.has(id) && quantities.get(id).size !== size) fail('Please use one T-shirt size per checkout, or contact us for mixed sizes.');
+    const quantity = (quantities.get(id)?.quantity || 0) + item.quantity;
     if (quantity > 99) fail('Maximum quantity is 99 per product.');
-    quantities.set(id, quantity);
+    quantities.set(id, { quantity, size });
   }
   const products = await findProducts([...quantities.keys()]);
-  const orderItems = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([id, quantity]) => {
+  const orderItems = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([id, { quantity, size }]) => {
     const product = products.find(p => String(p._id) === id);
     if (!product) fail('A product in your cart no longer exists.', 404);
     if (product.isOutOfStock) fail(`${product.name} is out of stock.`);
     if (!Number.isFinite(product.price) || product.price < 0 || product.price > 100000 ||
         !Number.isFinite(product.weight) || product.weight <= 0 || product.weight > 30)
       fail(`${product.name} needs a valid store price and weight.`, 503);
-    return { product: id, name: product.name, quantity, price: Math.round(product.price * 100) / 100,
+    return { product: id, name: size ? `${product.name} · ${size}` : product.name, ...(size ? { size } : {}), quantity, price: Math.round(product.price * 100) / 100,
       weight: product.weight, image: product.images[0] };
   });
+  if (input.destinationCountry !== 'Thailand' && config.internationalProductIds && orderItems.some(item => !config.internationalProductIds.includes(item.product))) {
+    fail('This basket includes an item that needs a destination and contents check. Contact the shop before overseas delivery.');
+  }
   const productWeightGrams = orderItems.reduce((sum, item) => sum + Math.ceil(item.weight * 1000) * item.quantity, 0);
   const shipping = calculateShipping(input.destinationCountry, productWeightGrams, config, now);
   const subtotalCents = orderItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0);

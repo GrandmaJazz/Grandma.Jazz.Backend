@@ -4,7 +4,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const Discount = require('../models/Discount');
-const { createCheckoutSession, verifyPayment } = require('../services/stripeService');
+const { createCheckoutSession, verifyPayment, retryOrderCheckoutSession, cancelCheckoutSession } = require('../services/stripeService');
 const { ORDER_STATUS } = require('../config/constants');
 
 const { buildQuote, assertQuoteAccepted, defaultConfig } = require('../services/checkoutQuote');
@@ -16,7 +16,7 @@ const quoteFor = (input, userId) => buildQuote(input, userId, quoteDependencies)
 
 const getShippingConfig = (req, res) => {
   res.set('Cache-Control', 'no-store').json({ success: true,
-    countries: Object.keys(defaultConfig.countryZones).sort(),
+    countries: (defaultConfig.enabledDestinations || Object.keys(defaultConfig.countryZones)).slice().sort(),
     packagingGrams: defaultConfig.packagingGrams, service: defaultConfig.service,
     rateVersion: defaultConfig.version });
 };
@@ -53,7 +53,7 @@ const checkPaymentStatus = asyncHandler(async (req, res) => {
     throw new Error('กรุณาระบุ session ID');
   }
   
-  const { success, order } = await verifyPayment(sessionId);
+  const { success, order } = await verifyPayment(sessionId, req.user._id);
   
   if (success) {
     res.json({
@@ -233,12 +233,10 @@ const retryPayment = asyncHandler(async (req, res) => {
     throw new Error('Please start a new checkout to review current prices and shipping.');
   }
   const quote = await quoteFor({ orderItems: order.orderItems.map(item => ({
-    product: String(item.product), quantity: item.quantity })),
+    product: String(item.product), quantity: item.quantity, ...(item.size ? { size: item.size } : {}) })),
     destinationCountry: order.destinationCountry, discountCode: order.discountCode }, req.user._id);
   assertQuoteAccepted(quote, order.checkoutQuote.quoteId);
-  const { createPaymentSession } = require('../services/checkoutPayment');
-  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  const session = await createPaymentSession(stripe, quote, order._id, process.env.CLIENT_URL);
+  const { session } = await retryOrderCheckoutSession(order._id, quote);
   res.json({ success: true, sessionUrl: session.url, sessionId: session.id });
 });
 
@@ -271,10 +269,8 @@ const cancelOrder = asyncHandler(async (req, res) => {
     throw new Error('คำสั่งซื้อนี้ถูกยกเลิกไปแล้ว');
   }
   
-  // อัปเดตสถานะเป็น canceled
-  order.status = ORDER_STATUS.CANCELED;
-  
-  const updatedOrder = await order.save();
+  // Stop the Stripe session before accepting an unpaid-order cancellation.
+  const updatedOrder = await cancelCheckoutSession(order._id);
   
   res.json({
     success: true,

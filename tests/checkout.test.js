@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { buildQuote, calculateShipping, assertQuoteAccepted, defaultConfig } = require('../src/services/checkoutQuote');
 const { paymentConfig, createPaymentSession } = require('../src/services/checkoutPayment');
 const now = new Date('2026-09-17T00:00:00Z');
-const config = { ...defaultConfig, reviewDueAt: '2099-01-01' };
+const config = { ...defaultConfig, enabledDestinations: undefined, internationalProductIds: undefined, thbPerUsd: 33.28, reviewDueAt: '2099-01-01' };
 const id = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 const product = { _id: id, name: 'T-shirt', price: 39.06, weight: 0.3, images: ['https://example.com/t.jpg'] };
 const input = { orderItems: [{ product: id, quantity: 2, price: 0, weight: 0 }], destinationCountry: 'United Kingdom', shippingCost: 0 };
@@ -33,7 +33,7 @@ test('weight bands include packaging and round up without skipping a band', () =
  assert.equal(calculateShipping('Singapore', 50, config, now).rateThb, 770);
  for (const country of ['', 'Atlantis', '__proto__', 'constructor']) assert.throws(() => calculateShipping(country, 100, config, now));
  for (const weight of [0, -1, NaN, Infinity, 1.5]) assert.throws(() => calculateShipping('Thailand', weight, config, now));
- assert.throws(() => calculateShipping('Thailand', 100, {...config, reviewDueAt:'2020-01-01'}, now), /review/);
+ assert.throws(() => calculateShipping('United Kingdom', 100, {...config, reviewDueAt:'2020-01-01'}, now), /review/);
 });
 test('rejects malformed carts and missing/unavailable/unweighed products', async () => {
  for (const quantity of [0, -1, 1.5, 100, '2', NaN, Infinity]) {

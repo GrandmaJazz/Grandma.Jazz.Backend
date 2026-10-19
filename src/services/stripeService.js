@@ -18,16 +18,34 @@ const { ORDER_STATUS } = require('../config/constants');
 const { sendOrderNotificationToAdmins, sendOrderConfirmationToCustomer } = require('./emailService');
 
 
-const { createPaymentSession } = require('./checkoutPayment');
+const { getOrderCheckoutSession, cancelOrderCheckout } = require('./checkoutSessionLifecycle');
+const { reconcileOrderPayment } = require('./orderPaymentReconciliation');
+const { reconcileTicketPayment } = require('./ticketPaymentReconciliation');
+const reconciliationDependencies = {
+  Order, Discount,
+  // Customer email setup remains deferred; do not enable it as part of payment
+  // verification. Existing transport functions are used only on explicit opt-in.
+  get notificationsEnabled() { return process.env.ORDER_EMAIL_ENABLED === 'true'; },
+  notify: async order => {
+    await sendOrderNotificationToAdmins(order);
+    await sendOrderConfirmationToCustomer(order);
+  },
+};
+const lifecycleDependencies = {
+  Order, stripe,
+  get clientUrl() { return process.env.CLIENT_URL; },
+  onPaid: session => reconcileOrderPayment(session, reconciliationDependencies),
+};
+const retryOrderCheckoutSession = (orderId, quote) => getOrderCheckoutSession(orderId, quote, lifecycleDependencies);
+const cancelCheckoutSession = orderId => cancelOrderCheckout(orderId, lifecycleDependencies);
 const createCheckoutSession = async (quote, userId, shippingAddress, contactPhone) => {
   const order = await Order.create({
     user: userId, orderItems: quote.orderItems, shippingAddress, contactPhone,
     destinationCountry: quote.destinationCountry, shippingCost: quote.shipping.shippingCents / 100,
     discountCode: quote.discountCode, discountAmount: quote.discountCents / 100,
-    totalAmount: quote.totalCents / 100, checkoutQuote: quote, status: ORDER_STATUS.PENDING,
+    totalAmount: quote.totalCents / 100, checkoutQuote: quote, status: ORDER_STATUS.PENDING, checkoutSessionAttempt: 1,
   });
-  const session = await createPaymentSession(stripe, quote, order._id, process.env.CLIENT_URL);
-  return { session, order };
+  return getOrderCheckoutSession(order._id, quote, lifecycleDependencies);
 };
 
 const createTicketCheckoutSession = async (ticketId, userId) => {
@@ -97,89 +115,22 @@ const createTicketCheckoutSession = async (ticketId, userId) => {
   }
 };
 
-const verifyPayment = async (sessionId) => {
-  try {
-    if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
-      throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
-    }
-
-    console.log('Verifying payment for session:', sessionId);
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    
-    if (session.payment_status === 'paid') {
-      const orderId = session.metadata.orderId;
-      
-      const order = await Order.findById(orderId);
-      
-      if (order) {
-        if (order.checkoutQuote && (session.currency !== 'usd' || session.amount_total !== order.checkoutQuote.totalCents)) {
-          throw new Error('Payment amount does not match the order quote.');
-        }
-        order.isPaid = true;
-        order.paidAt = Date.now();
-        order.status = ORDER_STATUS.PAID;
-        order.paymentId = session.payment_intent;
-        
-        await order.save();
-        
-        if (order.discountCode) {
-          const discount = await Discount.findOne({ code: order.discountCode });
-          if (discount && !discount.hasUserUsed(order.user.toString())) {
-            discount.usedBy.push(order.user);
-            await discount.save();
-            console.log(`Discount ${order.discountCode} usage recorded for user ${order.user}`);
-          }
-        }
-        
-        console.log(`Order ${orderId} marked as paid`);
-        
-        await sendOrderNotificationToAdmins(order);
-        
-        // ส่งอีเมลยืนยันไปหาลูกค้า
-        await sendOrderConfirmationToCustomer(order);
-        
-        return { success: true, order };
-      }
-    }
-    
-    return { success: false };
-  } catch (error) {
-    console.error('Verify payment error:', error);
-    throw new Error('ไม่สามารถตรวจสอบสถานะการชำระเงินได้: ' + (error.message || 'Unknown error'));
+const verifyPayment = async (sessionId, userId) => {
+  if (!userId) throw Object.assign(new Error('Sign in to verify this payment.'), { status: 401 });
+  if (typeof sessionId !== 'string' || !/^cs_[a-zA-Z0-9_]{1,240}$/.test(sessionId)) {
+    throw Object.assign(new Error('Enter a valid checkout session.'), { status: 400 });
   }
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  return reconcileOrderPayment(session, reconciliationDependencies, userId);
 };
 
-const verifyTicketPayment = async (sessionId) => {
-  try {
-    if (!stripeSecretKey || stripeSecretKey === 'your_stripe_secret_key' || stripeSecretKey.trim() === '') {
-      throw new Error('ไม่พบ Stripe API Key ที่ถูกต้อง กรุณาตรวจสอบการตั้งค่าในไฟล์ .env');
-    }
-
-    console.log('Verifying ticket payment for session:', sessionId);
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    
-    if (session.payment_status === 'paid' && session.metadata.type === 'ticket') {
-      const ticketId = session.metadata.ticketId;
-      
-      const ticket = await Ticket.findById(ticketId)
-        .populate('event', 'title eventDate ticketPrice');
-      
-      if (ticket) {
-        ticket.status = 'paid';
-        ticket.paymentId = session.payment_intent;
-        
-        await ticket.save();
-        console.log(`Ticket ${ticketId} marked as paid`);
-        
-        return { success: true, ticket };
-      }
-    }
-    
-    return { success: false };
-  } catch (error) {
-    console.error('Verify ticket payment error:', error);
-    throw new Error('ไม่สามารถตรวจสอบสถานะการชำระเงินตั๋วได้: ' + (error.message || 'Unknown error'));
+const verifyTicketPayment = async (sessionId, userId) => {
+  if (!userId) throw Object.assign(new Error('Sign in to verify this payment.'), { status: 401 });
+  if (typeof sessionId !== 'string' || !/^cs_[a-zA-Z0-9_]{1,240}$/.test(sessionId)) {
+    throw Object.assign(new Error('Enter a valid checkout session.'), { status: 400 });
   }
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  return reconcileTicketPayment(session, Ticket, userId);
 };
 
 const handleWebhook = async (payload, signature) => {
@@ -201,61 +152,26 @@ const handleWebhook = async (payload, signature) => {
       const session = event.data.object;
       
       if (session.payment_status === 'paid') {
-        if (session.metadata.type === 'ticket') {
-          const ticketId = session.metadata.ticketId;
-          
-          const ticket = await Ticket.findById(ticketId);
-          if (ticket) {
-            ticket.status = 'paid';
-            ticket.paymentId = session.payment_intent;
-            
-            await ticket.save();
-            console.log(`Webhook: Ticket ${ticketId} marked as paid`);
-          }
-        } else {
-          const orderId = session.metadata.orderId;
-          
-          const order = await Order.findById(orderId);
-          if (order) {
-            if (order.checkoutQuote && (session.currency !== 'usd' || session.amount_total !== order.checkoutQuote.totalCents)) {
-              throw new Error('Payment amount does not match the order quote.');
-            }
-            order.isPaid = true;
-            order.paidAt = Date.now();
-            order.status = ORDER_STATUS.PAID;
-            order.paymentId = session.payment_intent;
-            
-            await order.save();
-            
-            if (order.discountCode) {
-              const discount = await Discount.findOne({ code: order.discountCode });
-              if (discount && !discount.hasUserUsed(order.user.toString())) {
-                discount.usedBy.push(order.user);
-                await discount.save();
-                console.log(`Webhook: Discount ${order.discountCode} usage recorded for user ${order.user}`);
-              }
-            }
-            
-            console.log(`Webhook: Order ${orderId} marked as paid`);
-            
-            await sendOrderNotificationToAdmins(order);
-            
-            // ส่งอีเมลยืนยันไปหาลูกค้า
-            await sendOrderConfirmationToCustomer(order);
-          }
+        if (session.metadata?.type === 'ticket') {
+          await reconcileTicketPayment(session, Ticket);
+        } else if (session.metadata?.type === 'order') {
+          await reconcileOrderPayment(session, reconciliationDependencies);
+
         }
       }
     }
     
     return { received: true };
   } catch (error) {
-    console.error('Webhook error:', error);
-    throw new Error('Webhook ล้มเหลว: ' + (error.message || 'Unknown error'));
+    console.error('Webhook processing failed:', error.type || error.name);
+    throw error;
   }
 };
 
 module.exports = { 
-  createCheckoutSession, 
+  createCheckoutSession,
+  retryOrderCheckoutSession,
+  cancelCheckoutSession,
   verifyPayment, 
   handleWebhook,
   createTicketCheckoutSession, 

@@ -14,14 +14,15 @@ function paymentConfig(quote, orderId, clientUrl) {
     metadata: { orderId: String(orderId), type: 'order', quoteId: quote.quoteId },
   };
 }
-async function createPaymentSession(stripe, quote, orderId, clientUrl) {
+async function createPaymentSession(stripe, quote, orderId, clientUrl, idempotencyKey) {
   const config = paymentConfig(quote, orderId, clientUrl);
   if (quote.discountCents > 0) {
     // Fail closed: never charge full price when creating the discount fails.
     const coupon = await stripe.coupons.create({ amount_off: quote.discountCents,
-      currency: 'usd', duration: 'once', name: `Discount: ${quote.discountCode}` });
+      currency: 'usd', duration: 'once', name: `Discount: ${quote.discountCode}` },
+      idempotencyKey ? { idempotencyKey: `${idempotencyKey}:coupon` } : undefined);
     config.discounts = [{ coupon: coupon.id }];
   }
-  return stripe.checkout.sessions.create(config);
+  return stripe.checkout.sessions.create(config, idempotencyKey ? { idempotencyKey } : undefined);
 }
 module.exports = { paymentConfig, createPaymentSession };

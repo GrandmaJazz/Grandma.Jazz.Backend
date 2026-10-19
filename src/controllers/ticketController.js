@@ -292,7 +292,7 @@ const createTicketCheckout = async (req, res) => {
         return res.status(400).json({ message: 'Session ID is required' });
       }
   
-      const { success, ticket } = await verifyTicketPayment(sessionId);
+      const { success, ticket } = await verifyTicketPayment(sessionId, req.user._id || req.user.id);
   
       if (success) {
         res.json({
@@ -313,7 +313,7 @@ const createTicketCheckout = async (req, res) => {
       }
     } catch (error) {
       console.error('Error verifying ticket payment:', error);
-      res.status(500).json({ 
+      res.status(error.status || 500).json({
         success: false,
         message: 'Error verifying ticket payment', 
         error: error.message 

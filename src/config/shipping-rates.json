@@ -1,11 +1,11 @@
 {
-  "version": "thailand-post-ems-2024-phase1-2026-09-17",
+  "version": "thailand-post-ems-reviewed-2026-10-19-four-routes",
   "service": "Thailand Post EMS World Merchandise",
-  "sourceUrl": "https://file.thailandpost.com/upload/content/Update!%20%20EMS%20World%20%202567%20(%201%20..%2067%20)_65b31890bf21d.pdf",
+  "sourceUrl": "https://file.thailandpost.com/upload/content/EMS%20World%20%2068%20update%20TW%2020%20._679c8953edf59.pdf",
   "sourcePublishedDate": "2024-01-10",
-  "reviewedAt": "2026-09-17",
-  "reviewDueAt": "2026-10-17",
-  "thbPerUsd": 33.28,
+  "reviewedAt": "2026-10-19",
+  "reviewDueAt": "2026-11-19",
+  "thbPerUsd": 33.541,
   "packagingGrams": 200,
   "maxWeightGrams": 30000,
   "domesticFlatThb": 50,
@@ -1572,5 +1572,23 @@
     "Philippines": 20000,
     "Poland": 20000,
     "Sweden": 20000
-  }
+  },
+  "enabledDestinations": [
+    "Thailand",
+    "United Kingdom",
+    "Australia",
+    "Germany",
+    "France"
+  ],
+  "internationalProductIds": [
+    "69296931be2f425d5baed478",
+    "6960a7f006185775d0cd444c",
+    "6960c0c906185775d0cd4497",
+    "6960c21106185775d0cd449e",
+    "6aaa37d4af0110889be25e6c",
+    "6aaa39bbaf0110889be25ec8"
+  ],
+  "fxSourceUrl": "https://app.bot.or.th/BTWS_STAT/statistics/BOTWEBSTAT.aspx?reportID=123",
+  "fxReferenceDate": "2026-10-15",
+  "reviewScope": "Ordinary merchandise to UK, Australia, Germany and France. Other destinations and restricted contents require manual acceptance. Domestic THB50 is a shop flat charge, not an EMS tariff."
 }
