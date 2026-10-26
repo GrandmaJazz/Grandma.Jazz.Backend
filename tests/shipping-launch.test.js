@@ -37,3 +37,22 @@ test('T-shirt size is required, retained and included in the accepted payment qu
   assert.equal(new Set(quotes).size,5);
   await assert.rejects(buildQuote({...base,orderItems:[{product:tee,quantity:1,size:'S'},{product:tee,quantity:1,size:'M'}]},'user',deps),/one T-shirt size/);
 });
+
+test('new empty water flasks receive one authoritative mixed-cart overseas charge', async () => {
+  const black='6adf460929ffe1205c26b732', white='6adf464229ffe1205c26b741';
+  const catalogue=[...products,...[black,white].map(_id=>({_id,name:'Water flask',price:26,weight:0.35,images:[]}))];
+  const dependencies={...deps,findProducts:async()=>catalogue};
+  const quote=await buildQuote({destinationCountry:'United Kingdom',shippingCost:0,orderItems:[
+    {product:black,quantity:1,price:0,weight:0},{product:white,quantity:2,price:0,weight:0}
+  ]},'user',dependencies);
+  assert.equal(quote.subtotalCents,7800);
+  assert.equal(quote.shipping.productWeightGrams,1050);
+  assert.equal(quote.shipping.packedWeightGrams,1250);
+  assert.equal(quote.shipping.rateThb,1550);
+  assert.equal(quote.totalCents,7800+Math.round(1550*100/33.541));
+  for(const product of ['6aaa4bb3c0aa59589723292a','6adf464529ffe1205c26b74c','6adf464829ffe1205c26b757']) {
+    await assert.rejects(buildQuote({destinationCountry:'United Kingdom',orderItems:[{product,quantity:1}]},'user',{
+      ...deps,findProducts:async()=>[{_id:product,name:'Storage jar',price:7,weight:0.12,images:[]}]
+    }),/contents check/);
+  }
+});
