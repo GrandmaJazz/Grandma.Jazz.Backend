@@ -56,3 +56,27 @@ test('new empty water flasks receive one authoritative mixed-cart overseas charg
     }),/contents check/);
   }
 });
+
+test('hat colours are server-validated, distinct order lines with their matching images', async () => {
+  const hat='69296a1cbe2f425d5baed4a7';
+  const dependencies={...deps,findProducts:async()=>[{_id:hat,name:'Smoking Hat',price:12,weight:0.3,images:['cream.jpg','black.jpg','brown.jpg']}]};
+  const input={destinationCountry:'Thailand',orderItems:[{product:hat,quantity:1,colour:'Black',price:0,weight:0},{product:hat,quantity:2,colour:'Brown'}]};
+  const q=await buildQuote(input,'user',dependencies);
+  assert.equal(q.subtotalCents,3600);assert.equal(q.shipping.productWeightGrams,900);
+  assert.deepEqual(q.orderItems.map(x=>[x.name,x.colour,x.image]),[['Smoking Hat · Black','Black','black.jpg'],['Smoking Hat · Brown','Brown','brown.jpg']]);
+  for(const colour of [undefined,'red','brown','<script>']) await assert.rejects(buildQuote({...input,orderItems:[{product:hat,quantity:1,colour}]},'user',dependencies),/hat colour/);
+  await assert.rejects(buildQuote({...input,orderItems:[{product:tee,quantity:1,size:'M',colour:'Brown'}]},'user',deps),/colour selection/);
+  const changed=await buildQuote({...input,orderItems:[{product:hat,quantity:3,colour:'Cream'}]},'user',dependencies);
+  assert.notEqual(changed.quoteId,q.quoteId);
+});
+
+
+test('white and black canvas bags retain independent quantities, images and quote identity', async () => {
+  const bag='6aaa37a3af0110889be25e65';
+  const dependencies={...deps,findProducts:async()=>[{_id:bag,name:'Smoking bag',price:5,weight:0.3,images:['black.jpg','white.jpg']}]};
+  const base={destinationCountry:'Thailand',orderItems:[{product:bag,quantity:1,colour:'White'},{product:bag,quantity:2,colour:'Black'}]};
+  const quote=await buildQuote(base,'user',dependencies);
+  assert.equal(quote.subtotalCents,1500);
+  assert.deepEqual(quote.orderItems.map(item=>[item.colour,item.quantity,item.image]),[['Black',2,'black.jpg'],['White',1,'white.jpg']]);
+  for(const colour of [undefined,'Cream','white']) await assert.rejects(buildQuote({...base,orderItems:[{product:bag,quantity:1,colour}]},'user',dependencies),/bag colour/);
+});

@@ -12,6 +12,7 @@ const orderItemSchema = mongoose.Schema({
     type: String,
     required: true
   },
+  colour: { type: String, enum: ['Cream', 'Black', 'Brown', 'White'] },
   size: { type: String, enum: ['S', 'M', 'L', 'XL', 'XXL'] },
   quantity: {
     type: Number,

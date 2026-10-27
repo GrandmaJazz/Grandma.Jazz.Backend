@@ -1,5 +1,9 @@
 const { createHash } = require('node:crypto');
 const defaultConfig = require('../config/shipping-rates.json');
+const HAT_ID = '69296a1cbe2f425d5baed4a7';
+const HAT_COLOURS = ['Cream', 'Black', 'Brown'];
+const BAG_ID = '6aaa37a3af0110889be25e65';
+const COLOURS = { [HAT_ID]: HAT_COLOURS, [BAG_ID]: ['Black', 'White'] };
 const SHIRT_ID = '6aaa37d4af0110889be25e6c';
 const SHIRT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
 
@@ -60,21 +64,25 @@ async function buildQuote(input, userId, { findProducts, findDiscount, config = 
     if (id === SHIRT_ID && !SHIRT_SIZES.includes(item.size)) fail('Choose a T-shirt size: S, M, L, XL or XXL.');
     if (id !== SHIRT_ID && item.size != null) fail('This product does not use a size selection.');
     const size = id === SHIRT_ID ? item.size : undefined;
-    if (quantities.has(id) && quantities.get(id).size !== size) fail('Please use one T-shirt size per checkout, or contact us for mixed sizes.');
-    const quantity = (quantities.get(id)?.quantity || 0) + item.quantity;
+    if (COLOURS[id] && !COLOURS[id].includes(item.colour)) fail(`Choose a ${id === HAT_ID ? 'hat' : 'bag'} colour: ${COLOURS[id].join(', ')}.`);
+    if (!COLOURS[id] && item.colour != null) fail('This product does not use a colour selection.');
+    const colour = COLOURS[id] ? item.colour : undefined;
+    const key = colour ? `${id}:${colour}` : id;
+    if (quantities.has(key) && quantities.get(key).size !== size) fail('Please use one T-shirt size per checkout, or contact us for mixed sizes.');
+    const quantity = (quantities.get(key)?.quantity || 0) + item.quantity;
     if (quantity > 99) fail('Maximum quantity is 99 per product.');
-    quantities.set(id, { quantity, size });
+    quantities.set(key, { id, quantity, size, colour });
   }
-  const products = await findProducts([...quantities.keys()]);
-  const orderItems = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([id, { quantity, size }]) => {
+  const products = await findProducts([...new Set([...quantities.values()].map(item => item.id))]);
+  const orderItems = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, { id, quantity, size, colour }]) => {
     const product = products.find(p => String(p._id) === id);
     if (!product) fail('A product in your cart no longer exists.', 404);
     if (product.isOutOfStock) fail(`${product.name} is out of stock.`);
     if (!Number.isFinite(product.price) || product.price < 0 || product.price > 100000 ||
         !Number.isFinite(product.weight) || product.weight <= 0 || product.weight > 30)
       fail(`${product.name} needs a valid store price and weight.`, 503);
-    return { product: id, name: size ? `${product.name} · ${size}` : product.name, ...(size ? { size } : {}), quantity, price: Math.round(product.price * 100) / 100,
-      weight: product.weight, image: product.images[0] };
+    return { product: id, name: size || colour ? `${product.name} · ${size || colour}` : product.name, ...(size ? { size } : {}), ...(colour ? { colour } : {}), quantity, price: Math.round(product.price * 100) / 100,
+      weight: product.weight, image: product.images[colour ? COLOURS[id].indexOf(colour) : 0] || product.images[0] };
   });
   if (input.destinationCountry !== 'Thailand' && config.internationalProductIds && orderItems.some(item => !config.internationalProductIds.includes(item.product))) {
     fail('This basket includes an item that needs a destination and contents check. Contact the shop before overseas delivery.');
