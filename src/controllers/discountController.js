@@ -1,6 +1,7 @@
 // backend/src/controllers/discountController.js
 const asyncHandler = require('express-async-handler');
 const Discount = require('../models/Discount');
+const Order = require('../models/Order');
 
 // @desc    Validate discount code
 // @route   POST /api/discounts/validate
@@ -31,6 +32,11 @@ const validateDiscount = asyncHandler(async (req, res) => {
   if (!validityCheck.valid) {
     res.status(400);
     throw new Error(validityCheck.message);
+  }
+
+  if (discount.firstOrderOnly && await Order.exists({ user: userId, isPaid: true })) {
+    res.status(400);
+    throw new Error('This discount is for your first order only.');
   }
 
   // Check if user has already used this discount
@@ -91,7 +97,7 @@ const getDiscountById = asyncHandler(async (req, res) => {
 // @route   POST /api/discounts
 // @access  Private/Admin
 const createDiscount = asyncHandler(async (req, res) => {
-  const { code, discountType, value, isActive, validFrom, validUntil, description } = req.body;
+  const { code, discountType, value, isActive, validFrom, validUntil, description, firstOrderOnly } = req.body;
 
   if (!code || !discountType || value === undefined) {
     res.status(400);
@@ -127,7 +133,8 @@ const createDiscount = asyncHandler(async (req, res) => {
     isActive: isActive !== undefined ? isActive : true,
     validFrom: validFrom ? new Date(validFrom) : Date.now(),
     validUntil: validUntil ? new Date(validUntil) : undefined,
-    description
+    description,
+    firstOrderOnly: firstOrderOnly === true
   });
 
   res.status(201).json({
@@ -140,7 +147,7 @@ const createDiscount = asyncHandler(async (req, res) => {
 // @route   PUT /api/discounts/:id
 // @access  Private/Admin
 const updateDiscount = asyncHandler(async (req, res) => {
-  const { code, discountType, value, isActive, validFrom, validUntil, description } = req.body;
+  const { code, discountType, value, isActive, validFrom, validUntil, description, firstOrderOnly } = req.body;
 
   const discount = await Discount.findById(req.params.id);
 
@@ -183,6 +190,7 @@ const updateDiscount = asyncHandler(async (req, res) => {
   if (validFrom !== undefined) discount.validFrom = new Date(validFrom);
   if (validUntil !== undefined) discount.validUntil = validUntil ? new Date(validUntil) : undefined;
   if (description !== undefined) discount.description = description;
+  if (firstOrderOnly !== undefined) discount.firstOrderOnly = firstOrderOnly === true;
 
   const updatedDiscount = await discount.save();
 

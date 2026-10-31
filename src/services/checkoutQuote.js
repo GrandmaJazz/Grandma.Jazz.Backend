@@ -52,7 +52,7 @@ function calculateShipping(country, productWeightGrams, config = defaultConfig, 
 }
 
 // Only IDs and quantities are accepted as cart input. Everything chargeable is reloaded.
-async function buildQuote(input, userId, { findProducts, findDiscount, config = defaultConfig, now } = {}) {
+async function buildQuote(input, userId, { findProducts, findDiscount, hasPaidOrder, config = defaultConfig, now } = {}) {
   if (!input || !Array.isArray(input.orderItems) || !input.orderItems.length || input.orderItems.length > 100)
     fail('Choose between 1 and 100 product lines.');
   const quantities = new Map();
@@ -98,6 +98,10 @@ async function buildQuote(input, userId, { findProducts, findDiscount, config = 
     if (!discount) fail('Discount code not found.');
     const validity = discount.isValid();
     if (!validity.valid) fail(validity.message);
+    if (discount.firstOrderOnly) {
+      if (typeof hasPaidOrder !== 'function') fail('First-order eligibility is unavailable. Please retry.', 503);
+      if (await hasPaidOrder(userId)) fail('This discount is for your first order only.');
+    }
     if (discount.hasUserUsed(userId)) fail('You have already used this discount code.');
     if (!Number.isFinite(discount.value) || discount.value < 0 ||
         !['percentage', 'fixed'].includes(discount.discountType)) fail('Invalid discount configuration.', 503);

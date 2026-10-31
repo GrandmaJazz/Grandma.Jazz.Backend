@@ -11,6 +11,7 @@ const { buildQuote, assertQuoteAccepted, defaultConfig } = require('../services/
 const quoteDependencies = {
   findProducts: ids => Product.find({ _id: { $in: ids } }),
   findDiscount: code => Discount.findOne({ code }),
+  hasPaidOrder: user => Order.exists({ user, isPaid: true }),
 };
 const quoteFor = (input, userId) => buildQuote(input, userId, quoteDependencies);
 
