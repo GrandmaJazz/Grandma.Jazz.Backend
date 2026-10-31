@@ -91,3 +91,13 @@ test('audited carrier cells match the archived official tariff', () => {
   assert.equal(config.rates.find(row => row.upToGrams === grams).thb[zone-1], thb);
  }
 });
+
+ test('first-order discounts reject returning buyers and fail closed without eligibility', async () => {
+  const discount = {code:'FIRST',value:10,discountType:'percentage',firstOrderOnly:true,isValid:()=>({valid:true}),hasUserUsed:()=>false};
+  const request = {...input,discountCode:'FIRST'};
+  const first = {...deps,findDiscount:async()=>discount,hasPaidOrder:async()=>false};
+  assert.equal((await buildQuote(request,'new-user',first)).discountCents,781);
+  await assert.rejects(buildQuote(request,'returning-user',{...first,hasPaidOrder:async()=>true}),/first order only/);
+  await assert.rejects(buildQuote(request,'user',{...first,hasPaidOrder:undefined}),/eligibility is unavailable/);
+  assert.equal((await buildQuote(request,'user',{...first,findDiscount:async()=>({...discount,firstOrderOnly:false}),hasPaidOrder:async()=>true})).discountCents,781);
+ });

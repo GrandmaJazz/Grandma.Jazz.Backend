@@ -25,6 +25,7 @@ const discountSchema = mongoose.Schema(
       type: Boolean,
       default: true
     },
+    firstOrderOnly: { type: Boolean, default: false },
     usedBy: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
