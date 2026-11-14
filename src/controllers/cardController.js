@@ -3,7 +3,6 @@ const Music = require('../models/Music');
 const asyncHandler = require('express-async-handler');
 const fs = require('fs');
 const path = require('path');
-const mm = require('music-metadata');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, bucketName } = require('../config/awsS3');
 

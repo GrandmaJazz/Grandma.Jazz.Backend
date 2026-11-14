@@ -10,11 +10,12 @@ const notFound = (req, res, next) => {
 // จัดการกับข้อผิดพลาดทั่วไป
 const errorHandler = (err, req, res, next) => {
   const statusCode = err.status || (res.statusCode === 200 ? 500 : res.statusCode);
+  const production = process.env.NODE_ENV === 'production';
   
   res.status(statusCode).json({
     success: false,
-    message: err.message || MESSAGES.SERVER_ERROR,
-    stack: process.env.NODE_ENV === 'production' ? null : err.stack
+    message: production && statusCode >= 500 ? MESSAGES.SERVER_ERROR : err.message || MESSAGES.SERVER_ERROR,
+    stack: production ? null : err.stack
   });
 };
 

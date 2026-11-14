@@ -34,11 +34,12 @@ const discountRoutes = require('./routes/discountRoutes');
 
 // สร้างแอปพลิเคชัน Express
 const app = express();
+app.disable('x-powered-by');
 
 // Middleware
 app.use('/api/webhook', require('./routes/webhookRoutes'));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // กำหนดค่า CORS ที่แก้ไขแล้ว
 const allowedOrigins = [
